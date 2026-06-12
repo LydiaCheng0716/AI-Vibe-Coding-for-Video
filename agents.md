@@ -254,6 +254,96 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
 
 ---
 
+## Git Worktree 布局与合并流程
+
+每个 agent 在**独立的 git worktree** 中工作，互不干扰，人工审阅后再合并回 `develop`。
+
+### 分支与目录布局
+
+```
+0612VibeCode/                          ← 主仓库（main 分支，仅生产发布）
+│   └── develop                        ← 集成分支（所有 agent 从此拉出）
+│
+0612VibeCode-worktrees/                ← 同级目录，存放所有 agent worktree
+├── pm/                  → 分支 agent/pm
+├── architect/           → 分支 agent/architect
+├── architecture-reviewer/ → 分支 agent/architecture-reviewer
+├── developer/           → 分支 agent/developer
+├── reviewer/            → 分支 agent/reviewer
+├── qa/                  → 分支 agent/qa
+└── po-assistant/        → 分支 agent/po-assistant
+```
+
+| 分支 | Worktree 路径 | 对应角色 |
+|------|--------------|---------|
+| `main` | `0612VibeCode/` | 生产发布 |
+| `develop` | （主仓库切换） | 集成分支 |
+| `agent/pm` | `../0612VibeCode-worktrees/pm` | PM Agent |
+| `agent/architect` | `../0612VibeCode-worktrees/architect` | Architect Agent |
+| `agent/architecture-reviewer` | `../0612VibeCode-worktrees/architecture-reviewer` | 架构 Review Agent |
+| `agent/developer` | `../0612VibeCode-worktrees/developer` | Developer Agent |
+| `agent/reviewer` | `../0612VibeCode-worktrees/reviewer` | Code Review Agent |
+| `agent/qa` | `../0612VibeCode-worktrees/qa` | QA Agent |
+| `agent/po-assistant` | `../0612VibeCode-worktrees/po-assistant` | PO Assistant Agent |
+
+### 初始化命令（仅首次）
+
+```bash
+# 在主仓库内执行
+git branch develop                                    # 创建集成分支
+WT=../0612VibeCode-worktrees && mkdir -p "$WT"
+for agent in pm architect architecture-reviewer developer reviewer qa po-assistant; do
+  git worktree add -b "agent/$agent" "$WT/$agent" develop
+done
+git worktree list                                     # 查看所有 worktree
+```
+
+### 日常工作流程
+
+```bash
+# 1. 进入某个 agent 的工作区（在 VS Code 中打开该目录）
+cd ../0612VibeCode-worktrees/developer
+
+# 2. agent 在此分支上工作、提交
+git add [具体文件]
+git commit -m "feat(TASK-XXX): 实现内容"
+
+# 3. 推送（如有远程仓库）或等待人工审阅
+```
+
+### 人工审阅后合并
+
+```bash
+# 回到主仓库，切到 develop
+cd ../../0612VibeCode
+git checkout develop
+
+# 人工审阅通过后，合并对应 agent 分支
+git merge agent/developer
+
+# 累积若干功能、QA 通过后，由 Human PO 批准发布到 main
+git checkout main && git merge develop
+```
+
+### 同步最新 develop 到 agent worktree
+
+```bash
+# 在 agent worktree 内，拉取最新集成分支
+cd ../0612VibeCode-worktrees/developer
+git merge develop          # 或 git rebase develop
+```
+
+### 清理 worktree（任务完成后）
+
+```bash
+git worktree remove ../0612VibeCode-worktrees/developer   # 删除工作区
+git branch -d agent/developer                              # 删除分支（已合并）
+```
+
+> **核心约束：** 所有合并到 `develop` / `main` 的操作必须经 Human PO 人工审阅确认；agent 之间不直接互相合并分支，统一通过 `develop` 集成。
+
+---
+
 ## VS Code 多终端配置
 
 ```
