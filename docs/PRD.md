@@ -72,7 +72,7 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 **验收标准：**
 - [ ] Given 用户打开 StoryBoard AI Chrome 侧边栏，When 用户输入或粘贴故事文本，Then 系统应保留文本并展示可生成状态。
 - [ ] Given 故事文本为空，When 用户点击生成，Then 系统应阻止提交并提示用户先输入故事。
-- [ ] Given 故事文本过短或过长，When 用户点击生成，Then 系统应给出可理解的校验提示。
+- [ ] Given 故事文本少于 10 字或超过 5000 字（按去除首尾空白后的 Unicode 码点数计算），When 用户点击生成，Then 系统应阻止提交并给出可理解的校验提示。
 
 ### EPIC-002：生成参数与 BYOK 设置
 
@@ -92,7 +92,9 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 **验收标准：**
 - [ ] Given 用户输入有效故事和参数，When 用户点击生成，Then 系统应返回 3-10 个镜头。
 - [ ] Given 系统返回镜头，When 用户查看任一镜头，Then 每个镜头应包含概要、景别、运镜、时长建议和完整视频提示词。
-- [ ] Given LLM 返回格式异常，When 系统解析失败，Then 系统应提示生成失败并允许用户重试。
+- [ ] Given 任意 LLM 生成正在进行，When 用户再次点击分镜或 BGM 生成，Then 系统应通过全局并发锁（并发=1）阻止重复提交并保持加载状态。
+- [ ] Given 网络错误、请求超时、429 或 5xx，When 系统调用 LLM 失败，Then 系统应最多自动重试 2 次（合计 3 次尝试）并在耗尽后提示用户。
+- [ ] Given 401/403 或 LLM 返回格式异常，When 系统调用或解析失败，Then 系统不应自动重试，应提示生成失败并允许用户手动重试。
 
 ### EPIC-004：人物一致性与模板适配
 
@@ -128,16 +130,17 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 
 ## 任务列表
 
-| 任务 ID | 标题 | Epic | 负责人 | 状态 |
-|--------|------|------|--------|------|
-| TASK-001 | Chrome 侧边栏插件壳与故事输入 | EPIC-001 | Developer Agent | 待开始 |
-| TASK-002 | BYOK 设置与生成参数选择 | EPIC-002 | Developer Agent | 待开始 |
-| TASK-003 | 分镜生成请求与结构化结果解析 | EPIC-003 | Developer Agent | 待开始 |
-| TASK-004 | 视频提示词模板适配 | EPIC-003 / EPIC-004 | Developer Agent | 待开始 |
-| TASK-005 | 角色识别与人物一致性注入 | EPIC-004 | Developer Agent | 待开始 |
-| TASK-006 | 分镜卡片查看、编辑与单镜头复制 | EPIC-005 | Developer Agent | 待开始 |
-| TASK-007 | BGM 提示词生成与复制 | EPIC-006 | Developer Agent | 待开始 |
-| TASK-008 | Markdown、JSON、纯文本导出 | EPIC-005 | Developer Agent | 待开始 |
+| 任务 ID | 标题 | Epic | 依赖 | 负责人 | 状态 |
+|--------|------|------|------|--------|------|
+| TASK-001 | Chrome 侧边栏插件壳与故事输入 | EPIC-001 | 无 | Developer Agent | 待开始 |
+| TASK-002 | BYOK 设置与生成参数选择 | EPIC-002 | TASK-001 | Developer Agent | 待开始 |
+| TASK-003 | 分镜生成请求与结构化结果解析 | EPIC-003 | TASK-001, TASK-002 | Developer Agent | 待开始 |
+| TASK-004 | 视频提示词模板适配 | EPIC-003 / EPIC-004 | TASK-003 | Developer Agent | 待开始 |
+| TASK-005 | 角色识别与人物一致性注入 | EPIC-004 | TASK-003 | Developer Agent | 待开始 |
+| TASK-006 | 分镜卡片查看、编辑与单镜头复制 | EPIC-005 | TASK-003 | Developer Agent | 待开始 |
+| TASK-007 | BGM 提示词生成与复制 | EPIC-006 | TASK-003 | Developer Agent | 待开始 |
+| TASK-008 | Markdown、JSON、纯文本导出 | EPIC-005 | TASK-003 | Developer Agent | 待开始 |
+| TASK-009 | 生成失败、重试与加载状态 | EPIC-003 / EPIC-006 | TASK-003 | Developer Agent | 待开始 |
 
 ---
 
@@ -146,6 +149,7 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 - 直接调用 Sora、Runway、即梦、可灵等视频生成 API。
 - 视频拼接、剪辑、字幕、转场、成片导出。
 - 首尾帧图片生成或图片工作流。
+- 单镜头 AI 重新生成。
 - 云端同步、团队协作、多人共享项目。
 - 账号体系、订阅支付、套餐权益校验。
 - 复杂模板市场、模板投稿、模板审核。
@@ -158,5 +162,5 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 | # | 问题 | 负责人 | 截止日期 |
 |---|------|--------|---------|
 | 1 | MVP 支持的 LLM Provider 和模型列表是否由 Architect 决定，还是 PO 指定默认项？ | PO / Architect | 架构阶段 |
-| 2 | API Key 本地保存的安全策略和是否需要加密，由 Architect 明确。 | Architect | 架构阶段 |
-| 3 | 故事输入长度、单次生成限流、失败重试次数，由 Architect 结合成本和浏览器限制确定。 | Architect | 架构阶段 |
+| 2 | API Key 本地保存策略已由 Architect 定稿：WebCrypto AES-GCM 加密，密钥不可导出并存 IndexedDB，密文存 `chrome.storage.local`，禁用 `storage.sync`。 | Architect | 已完成 |
+| 3 | 故事输入长度、单次生成限流、失败重试次数已由 Architect 定稿：10-5000 字、全局并发=1、瞬时错误最多自动重试 2 次。 | Architect | 已完成 |
