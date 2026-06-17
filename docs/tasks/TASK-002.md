@@ -9,6 +9,7 @@
 | 优先级 | 高 |
 | 负责人 | Developer Agent |
 | 状态 | 待开始 |
+| 依赖 | TASK-001 |
 | 分支 | `feature/task-002-byok-generation-settings` |
 
 ---
@@ -32,7 +33,7 @@
 ## 技术说明
 
 - API Key 仅用于 BYOK，MVP 不做账号体系、订阅支付或免 Key 调用。
-- API Key 本地保存方式和安全策略由 Architect 明确。
+- API Key 本地保存方式按架构定稿实现：WebCrypto AES-GCM 加密，密钥不可导出并存 IndexedDB，密文存 `chrome.storage.local`；UI 只展示掩码，禁止日志输出完整 Key，禁用 `storage.sync`。
 - 目标视频模型至少覆盖即梦、可灵、Sora、Runway 或通用模型选项；具体枚举由架构/API 文档固化。
 - 输出语言至少支持中文和英文。
 

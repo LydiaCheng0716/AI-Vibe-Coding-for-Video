@@ -9,6 +9,7 @@
 | 优先级 | 高 / 中 / 低 |
 | 负责人 | Developer Agent |
 | 状态 | 待开始 / 进行中 / 审查中 / 已完成 |
+| 依赖 | 无 / TASK-XXX |
 | 分支 | `feature/task-xxx-简短标题` |
 
 ---

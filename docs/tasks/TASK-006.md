@@ -9,6 +9,7 @@
 | 优先级 | 高 |
 | 负责人 | Developer Agent |
 | 状态 | 待开始 |
+| 依赖 | TASK-003 |
 | 分支 | `feature/task-006-card-edit-copy` |
 
 ---

@@ -9,6 +9,7 @@
 | 优先级 | 中 |
 | 负责人 | Developer Agent |
 | 状态 | 待开始 |
+| 依赖 | TASK-003 |
 | 分支 | `feature/task-007-bgm-prompt` |
 
 ---
@@ -26,6 +27,7 @@
 - [ ] Given 用户选择输出语言，When 系统生成 BGM 提示词，Then BGM 提示词应使用用户选择的输出语言。
 - [ ] Given BGM 提示词已生成，When 用户点击复制，Then 系统应复制 BGM 提示词到剪贴板并给出成功反馈。
 - [ ] Given 没有故事文本且没有分镜结果，When 用户点击生成 BGM 提示词，Then 系统应提示先输入故事或生成分镜。
+- [ ] Given 任意 LLM 生成正在进行，When 用户点击生成 BGM 提示词，Then 系统应通过全局并发锁（并发=1）阻止重复提交并保持加载状态。
 
 ---
 
@@ -33,7 +35,7 @@
 
 - MVP 只生成文本提示词，不调用 Suno、海绵音乐或其他 BGM API。
 - BGM 提示词应包含情绪、风格、节奏、乐器/音色、适用场景等要素。
-- 生成逻辑应复用 BYOK 设置和错误处理能力。
+- 生成逻辑应复用 BYOK 设置、全局并发锁和错误处理能力；自动重试规则与 TASK-009 保持一致。
 
 参考文档：[PRD.md](../PRD.md) | [architecture.md](../architecture.md) | [api-spec.md](../api-spec.md)
 
