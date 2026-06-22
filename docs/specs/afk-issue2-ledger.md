@@ -12,8 +12,19 @@
 - 自停：连续 2 个 tick 无实质新产出（新 commit/分支/PR/设计/修好的 CI 或门禁发现）→ `CronDelete` + 状态报告 + STOP。队列完成 → `CronDelete` + 终报。**停止时务必删 cron。**
 
 ## 进度账（done so far）
-- [2026-06-23 tick-1] 创建分支 `feature/task-001-sidebar-story-input`；写设计文档 `docs/specs/2026-06-23-issue2-sidebar-byok-design.md`；建本台账；建 ~30min cron relay。
-- 下一步：脚手架（package.json + vite + crxjs + ts + tailwind + vitest + manifest），然后 TASK-001 TDD（先 `core/config.ts` + `core/validate.ts` + 单测 RED→GREEN）。
+- [2026-06-23 tick-1a] 分支 `feature/task-001-sidebar-story-input`；设计文档 + 台账 + ~27min cron relay（job 2c454dd1）。
+- [2026-06-23 tick-1b] 脚手架落地：package.json（已 `npm install`，252 包）+ tsconfig + vitest.config + tests/setup（fake-indexeddb + chrome.storage mock）。
+- [2026-06-23 tick-1c] TASK-001 核心 TDD：`core/config.ts`（ADR-2 常量）+ `core/validate.ts`（码点数校验）+ 单测 **12 个全过（GREEN）**。已 commit + push。
+
+- **下一步（按序）：**
+  1. `core/models.ts`（GenerationParams/Provider/Project/Shot/Character/BgmPrompt 类型，对齐 api-spec §2）。
+  2. `services/storage.ts`（draft 存取 + settings + Result<void> + STORAGE_WRITE_FAILED）+ 单测。
+  3. UI：`index.html` + `manifest.config.ts` + `vite.config.ts` + `src/sidepanel/{main,App}.tsx` + `components/StoryInput.tsx`（受控 textarea + 字数 + 校验提示 + 草稿恢复）。
+  4. `npm run -s build` 必须过（tsc + vite）。
+  5. TASK-001 收尾：cto 自评 → Codex 外门 → Kimi 终审，逐条修 → 开 PR 到 develop（leave-open）。
+  6. 然后开 TASK-002 分支 `feature/task-002-byok-generation-settings`：`core/crypto.ts`（AES-GCM 不可导出密钥）+ `services/keyVault.ts`（ADR-1）+ `components/SettingsPanel.tsx` + 单测 → 同样三道门 → PR。
+
+- 命令备忘：`npm run -s test`、`npm run -s build`、`npm run -s lint`(tsc)。
 
 ## 空闲计数
-- 连续空闲 tick：0
+- 连续空闲 tick：0（tick-1 有大量实质产出）
