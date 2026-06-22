@@ -69,26 +69,21 @@ Human PO → 批准合并 → develop → main
 ## 项目结构
 
 ```
-project/
-├── docs/
+AI-Vibe-Coding-for-Video/
+├── docs/                        # 设计文档（StoryBoard AI）
 │   ├── PRD.md                   # 产品需求文档
-│   ├── architecture.md          # 系统架构设计
-│   ├── api-spec.md              # API 接口规范
-│   └── db-design.md             # 数据库设计
-│                                # （任务详情见 GitHub Issues，非 docs/）
-├── frontend/                    # 前端应用
-├── backend/                     # 后端应用
-├── tests/                       # E2E 和集成测试
-│
+│   ├── architecture.md          # 系统架构设计（含目录结构与 manifest 骨架）
+│   ├── api-spec.md              # 服务契约 + 出站 LLM 调用契约
+│   └── db-design.md             # 本地存储设计（chrome.storage / IndexedDB）
+│                                # 任务详情见 GitHub Issues，非 docs/
+├── skill/                       # 复用的工作流 Skills（afk、ui-ux-pro-max 等）
+├── agents.md                    # Agent 分工与工作流总说明
 └── .agents/                     # 各 Agent 提示词文件
-    ├── po-assistant.md
-    ├── pm.md
-    ├── architect.md
-    ├── architecture-reviewer.md
-    ├── developer.md
-    ├── reviewer.md
-    └── qa.md
+    ├── po-assistant.md  pm.md  architect.md  architecture-reviewer.md
+    └── developer.md  reviewer.md  qa.md  deploy.md
 ```
+
+> **首个产品 StoryBoard AI 是纯客户端 Chrome MV3 扩展，没有 `frontend/`+`backend/` 两层、没有数据库。** 实现代码落地后的扩展内部结构（`src/sidepanel`、`src/services`、`src/core` 等）以 [docs/architecture.md](docs/architecture.md) 第 3 节为准。下方「推荐技术栈」是工厂的**通用默认**，具体项目按 `architecture.md` 调整。
 
 ---
 
@@ -135,19 +130,22 @@ Terminal 6：QA                (.agents/qa.md)
 
 ---
 
-## 推荐技术栈（按项目调整）
+## 推荐技术栈（通用默认，按项目调整）
 
-| 层级 | 默认选型 |
-|------|---------|
-| 前端 | Next.js |
-| 后端 | FastAPI / Node.js |
-| 数据库 | PostgreSQL |
-| 缓存 | Redis |
-| 测试 | Playwright |
-| CI/CD | GitHub Actions |
-| 容器 | Docker |
-| Issue 管理 | GitHub Projects |
-| 文档 | Markdown（本仓库） |
+> 下表是「AI 软件工厂」对一般 Web 项目的**默认建议**。**本仓库的产品 StoryBoard AI 不用这套**——它是纯客户端 Chrome 扩展，实际技术栈见右列「StoryBoard AI 实际」（权威定义在 [docs/architecture.md](docs/architecture.md)）。
+
+| 层级 | 通用默认 | StoryBoard AI 实际 |
+|------|---------|--------------------|
+| 前端 | Next.js | React 18 + TypeScript（Chrome MV3 Side Panel） |
+| 构建 | — | Vite + `@crxjs/vite-plugin` |
+| 后端 | FastAPI / Node.js | **无**（纯客户端，BYOK 浏览器直连 LLM） |
+| 数据库 | PostgreSQL | **无**；本地 `chrome.storage.local` + IndexedDB |
+| 缓存 | Redis | 不适用 |
+| 测试 | Playwright | Vitest（单元）+ 可选扩展 E2E |
+| CI/CD | GitHub Actions | GitHub Actions：lint + 单测 + 打包 `.zip` |
+| 容器 | Docker | 不适用（扩展无服务端部署） |
+| Issue 管理 | GitHub Issues（任务唯一事实源） | 同 |
+| 文档 | Markdown（本仓库） | 同 |
 
 ---
 

@@ -2,11 +2,13 @@
 
 ## 状态
 
-> **状态：** 待复审（已按 REVIEW-001 修订）  
+> **状态：** 已通过 REVIEW-001 复审（PO 已批准并合并至 develop）· REVIEW-002 文档复审补订（见 v3）  
 > **作者：** Architect Agent  
-> **最后更新：** 2026-06-17
+> **最后更新：** 2026-06-23
 >
 > **v2 修订（2026-06-17）：** 补充本地存储写入失败/配额处理（ARCH-LOW-001）与导出隐私边界（ARCH-LOW-002）。
+>
+> **v3 修订（2026-06-23，REVIEW-002 文档复审）：** Seed Data 的 `model` 明确默认空字符串（不硬编码模型名，对齐 ADR-4）。
 
 ---
 
@@ -135,6 +137,6 @@ StoryBoard AI 是 **纯客户端、无账号** 的 Chrome 插件（见 [architec
 ## 初始数据（Seed Data）
 
 无需 seed。首次安装时：
-- `settings` 用 `core/config.ts` 的默认参数初始化（默认模型名待 PO 确认，见 ADR-4）。
+- `settings` 用 `core/config.ts` 的默认参数初始化；**`model` 默认为空字符串**（不硬编码默认模型名，ADR-4），设置页可展示一个仅用于提示、不进入生成链路的推荐占位。
 - `apiKeyCipher` 为空，UI 引导用户在 BYOK 设置中配置 Key。
 - `currentProject` 为空，UI 展示空态。

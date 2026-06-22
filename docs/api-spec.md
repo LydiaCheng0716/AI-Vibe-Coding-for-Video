@@ -2,11 +2,13 @@
 
 ## 状态
 
-> **状态：** 待复审（已按 REVIEW-001 修订）  
+> **状态：** 已通过 REVIEW-001 复审（PO 已批准并合并至 develop）· REVIEW-002 文档复审补订（见 v3，含新增错误码与契约说明，待 PO 知会）  
 > **作者：** Architect Agent  
-> **最后更新：** 2026-06-17
+> **最后更新：** 2026-06-23
 >
 > **v2 修订（2026-06-17，按 REVIEW-001）：** ProviderConfig 增加 baseUrl/权限约束与模型策略（ARCH-MED-001/HIGH-001）；新增 host 权限/CORS/解密/存储相关错误码；生成校验对齐 ADR-6（ARCH-MED-002）与码点计数（ARCH-MED-003）；全局并发锁（ARCH-MED-004）；出站契约补 JSON schema 与权限流程；导出明确排除 Key 与 Provider 凭据（ARCH-LOW-002）。
+>
+> **v3 修订（2026-06-23，REVIEW-002 文档复审）：** Storage 写操作统一返回 `Result<void>`（对齐 STORAGE_WRITE_FAILED）；新增 `updateCurrentProjectBgm()` 明确 BGM 持久化入口；新增错误码 `INVALID_PROVIDER_CONFIG` / `MODEL_REQUIRED` / `NO_GENERATION_INPUT`；生成前置校验加入 Provider 配置校验；`response_format` 增加兼容性处理说明（不支持则去字段重试一次）；BGM 无输入改用 `NO_GENERATION_INPUT`；Anthropic 模型示例去硬编码占位。
 
 ---
 
@@ -111,6 +113,8 @@ type ErrorCode =
   | 'STORY_TOO_SHORT'       // 低于下限（ADR-2，trim 后码点数）
   | 'STORY_TOO_LONG'        // 超过上限（ADR-2，trim 后码点数）
   | 'NO_API_KEY'            // 未配置 BYOK（TASK-002）
+  | 'INVALID_PROVIDER_CONFIG'// provider.kind 缺失/未知，或 baseUrl 非 https/格式错误（ADR-4/ADR-5）
+  | 'MODEL_REQUIRED'        // provider.model 为空（模型名由用户填写，不硬编码，ADR-4）
   | 'KEY_DECRYPT_FAILED'    // 解密失败/IndexedDB 密钥损坏，已清理坏状态，需重输 Key（ADR-1）
   | 'HOST_PERMISSION_DENIED'// 未获该 Provider 域名的 host 权限（用户拒绝/未授权）（ADR-5）
   | 'CORS_BLOCKED'          // 请求被浏览器/厂商跨域策略拦截，建议换 Provider（ADR-5）
@@ -121,7 +125,8 @@ type ErrorCode =
   | 'GENERATION_IN_PROGRESS'// 已有进行中的 LLM 生成，拒绝重复提交（ADR-3 全局并发=1）
   | 'STORAGE_WRITE_FAILED'  // 本地存储写入失败/配额超限（ARCH-LOW-001）
   | 'CLIPBOARD_FAILED'      // 复制失败（TASK-006/007）
-  | 'NOTHING_TO_EXPORT';    // 无分镜可导出/无内容生成 BGM（TASK-007/008）
+  | 'NO_GENERATION_INPUT'   // 生成 BGM 时既无故事也无分镜（TASK-007）
+  | 'NOTHING_TO_EXPORT';    // 无分镜可导出（TASK-008）
 ```
 
 ---
@@ -158,16 +163,22 @@ clearApiKey(): Promise<Result<void>>;
 
 ```ts
 getSettings(): Promise<{ params: GenerationParams; provider: ProviderConfig }>;
-saveSettings(s: { params: GenerationParams; provider: ProviderConfig }): Promise<void>;
 
-saveDraft(text: string): Promise<void>;       // 输入即存
-getDraft(): Promise<string | null>;           // 侧边栏重开时恢复（TASK-001）
+// 所有写操作统一返回 Result<void>：写入失败/配额超限时返回 ok:false + STORAGE_WRITE_FAILED，
+// 由 UI 提示「本地保存失败（可能空间不足）」，不静默丢数据（ARCH-LOW-001）。
+saveSettings(s: { params: GenerationParams; provider: ProviderConfig }): Promise<Result<void>>;
+
+saveDraft(text: string): Promise<Result<void>>;   // 输入即存
+getDraft(): Promise<string | null>;               // 侧边栏重开时恢复（TASK-001）
 
 getCurrentProject(): Promise<Project | null>;
-saveCurrentProject(p: Project): Promise<void>;
+saveCurrentProject(p: Project): Promise<Result<void>>;
 
 // 局部更新单个镜头提示词，仅改该镜头并置 editedByUser=true（TASK-006）
 updateShotPrompt(shotId: string, prompt: string): Promise<Result<void>>;
+
+// 把生成好的 BGM 写回当前项目的 currentProject.bgm（TASK-007 的持久化入口）
+updateCurrentProjectBgm(bgm: BgmPrompt): Promise<Result<void>>;
 ```
 
 **写入失败处理（ARCH-LOW-001）：** 所有写操作（`saveSettings/saveDraft/saveCurrentProject/updateShotPrompt`）在 `chrome.storage` 写入抛错或配额超限时，返回/抛出可展示错误 `STORAGE_WRITE_FAILED`，UI 提示「本地保存失败（可能空间不足）」，不静默丢数据。MVP 只有单个 `currentProject`，容量风险低；未来多项目/历史项目再评估把大对象迁到 IndexedDB（见 architecture.md 第 7 节）。
@@ -208,8 +219,9 @@ generateStoryboard(input: {
 1. **全局 LLM 锁空闲** → 否则 `GENERATION_IN_PROGRESS`（ADR-3，分镜与 BGM 共享同一把锁，ARCH-MED-004）
 2. 故事非空 → 否则 `EMPTY_STORY`（TASK-001，#2）
 3. 长度 ∈ [10, 5000]（**trim 后 Unicode 码点数**，ADR-2 / ARCH-MED-003）→ 否则 `STORY_TOO_SHORT` / `STORY_TOO_LONG`
-4. 已配置 Key 且可解密 → 否则 `NO_API_KEY` / `KEY_DECRYPT_FAILED`（TASK-002（#2） / ADR-1）
-5. 目标 Provider 域名已获 host 权限 → 否则 `HOST_PERMISSION_DENIED`（ADR-5）
+4. **Provider 配置合法** → 否则 `INVALID_PROVIDER_CONFIG`（`kind` 缺失/未知，或 `openai-compatible` 的 `baseUrl` 非 `https://`/格式非法；`anthropic` 忽略 `baseUrl`）/ `MODEL_REQUIRED`（`model` 为空）（ADR-4/ADR-5）
+5. 已配置 Key 且可解密 → 否则 `NO_API_KEY` / `KEY_DECRYPT_FAILED`（TASK-002（#2） / ADR-1）
+6. 目标 Provider 域名已获 host 权限 → 否则 `HOST_PERMISSION_DENIED`（ADR-5）
 
 **成功后置校验（TASK-003（#5） 验收 + ADR-6，ARCH-MED-002）：**
 - 解析接受范围：纯 JSON 或首个 fenced/平衡 `{...}` 块；都失败 → `BAD_RESPONSE_FORMAT`（**不猜测、不补全截断 JSON**）。
@@ -231,8 +243,10 @@ generateBgmPrompt(input: {
 }): Promise<Result<BgmPrompt>>;
 ```
 
-- `story` 与 `project` 至少有其一，否则返回 `NOTHING_TO_EXPORT`（提示先输入故事或生成分镜）。
+- `story` 与 `project` 至少有其一，否则返回 `NO_GENERATION_INPUT`（提示先输入故事或生成分镜）。
+- Provider/Key 前置校验同 3.3（含 `INVALID_PROVIDER_CONFIG` / `MODEL_REQUIRED`）。
 - 复用 BYOK 设置、第 3.3 的错误处理/重试能力，以及 **同一把全局 LLM 锁**（与分镜生成互斥，ARCH-MED-004）；BGM 生成进行中时分镜按钮也禁用，反之亦然。
+- 成功后由调用方通过 `Storage.updateCurrentProjectBgm()` 写回 `currentProject.bgm`（本服务只产出 `BgmPrompt`，不自行持久化）。
 
 ---
 
@@ -303,10 +317,12 @@ Content-Type: application/json
     { "role": "system", "content": "<分镜/角色/模板提示词>" },
     { "role": "user", "content": "<故事 + 参数>" }
   ],
-  "response_format": { "type": "json_object" },  // 支持的厂商上强制 JSON；不支持则靠 parse 容错
+  "response_format": { "type": "json_object" },  // 仅对已验证支持的 Provider 发送，见下方说明
   "max_tokens": 4000
 }
 ```
+
+> **`response_format` 兼容性（重要）：** 部分 OpenAI 兼容厂商不认识 `response_format` 字段，会直接 **拒绝整个请求**（400/422），届时解析层根本没机会容错。规则：仅对 Spike（#3）已验证支持的 Provider 默认带上该字段；若收到「unsupported parameter / unknown field」类错误，**去掉 `response_format` 自动重试一次**（这一次不计入 ADR-3 的网络重试预算），仍失败再按错误处理。是否携带由 Provider 能力位控制，不要无条件发送。
 
 **响应（节选）：** 取 `choices[0].message.content` 作为待解析文本。
 
@@ -324,7 +340,7 @@ content-type: application/json
 
 ```jsonc
 {
-  "model": "<取自 ProviderConfig.model（用户填写）；如 claude-opus-4-8 仅为示例占位，非硬编码默认值——ARCH-MED-001>",
+  "model": "<取自 ProviderConfig.model（用户填写的 Anthropic 模型名）；不在代码里硬编码默认值——ARCH-MED-001>",
   "max_tokens": 4000,
   "system": "<分镜/角色/模板提示词>",
   "messages": [

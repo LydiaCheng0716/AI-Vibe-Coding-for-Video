@@ -2,15 +2,16 @@
 
 ## 状态
 
-> **状态：** 待复审（已按 REVIEW-001 修订）  
+> **状态：** 已通过 REVIEW-001 复审（PO 已批准并合并至 develop）· REVIEW-002 文档复审补订（见 v3，含若干新增错误码/契约说明，待 PO 知会）  
 > **作者：** Architect Agent  
 > **审查人：** 架构 Review Agent  
 > **批准人：** Human PO  
-> **最后更新：** 2026-06-17
+> **最后更新：** 2026-06-23
 >
 > **修订记录：**
 > - v1（2026-06-12）首版。
 > - v2（2026-06-17）按 REVIEW-001 审查反馈修订：ADR-1 收紧 Key 安全边界并加验收规则（ARCH-HIGH-002）；新增 ADR-5 CORS/host permissions 可执行约束（ARCH-HIGH-001）；新增 ADR-6 JSON schema/解析规则（ARCH-MED-002）；ADR-4 模型不硬编码（ARCH-MED-001）；ADR-2 统一码点计数（ARCH-MED-003）；ADR-3 全局并发锁（ARCH-MED-004）；ARCH-LOW-001/002 见 api-spec/db-design。
+> - v3（2026-06-23）REVIEW-002 文档复审（Claude + Codex 双复审）：隐私措辞校正（生成数据出站至用户所选厂商）；ADR-5 新增 (4a) 任意自定义域名的 `optional_host_permissions` 策略 A/B（待 Spike 拍板）；§3 补 MV3 `manifest.json` 关键字段骨架；填写「架构 Review 意见」；状态/日期更新。配套 api-spec v3、db-design v3。
 
 ---
 
@@ -37,7 +38,7 @@ StoryBoard AI 是一个 **纯客户端的 Chrome 侧边栏插件**（Manifest V3
 
 - **没有自建后端服务器、没有自建数据库、没有账号体系。** 插件直接在用户浏览器里运行。
 - **BYOK（Bring Your Own Key）：** 所有 AI 生成都是浏览器用 **用户自己的 LLM API Key** 直连 LLM 厂商接口完成的。我们不代理、不中转、不存储任何 Key 到云端。
-- **所有数据都在本地。** 故事草稿、生成参数、分镜结果、API Key 全部存在浏览器本地（`chrome.storage` / IndexedDB），不上云。
+- **数据默认存在本地，我们没有自建云端。** 故事草稿、生成参数、分镜结果、API Key 全部存在浏览器本地（`chrome.storage` / IndexedDB），我们不向任何自有服务器上传。**例外：** 点击生成时，故事文本、参数和提示词会随出站请求发送给**用户自己选择的 LLM 厂商**（用其 Key），受该厂商隐私政策约束——这是 BYOK 的固有前提，应在设置页向用户说明。
 
 > 这意味着 PRD「待决问题 #2、#3」和登录注册、Bearer Token、免费/付费限流等传统服务端概念在本产品 **不适用**，已在本架构和 API 规范中删除。本文档为开发者固化的是「插件内部模块契约」和「对 LLM 厂商的出站调用契约」，而不是一套自建 REST API。
 
@@ -161,6 +162,33 @@ storyboard-ai/
 - **`services/generation.ts` 是唯一编排入口**：它调用 prompt 构造、Provider、parser、validate，组件不绕过它直接拼提示词。
 - **`core/config.ts` 是唯一的常量来源**：长度上下限、限流并发、重试次数、模型枚举集中在此，禁止散落在 UI 或 service 里（TASK-001（#2） / TASK-002（#2） 技术说明已点名）。
 - **Provider 抽象层屏蔽厂商差异**：上层只面向 `LlmProvider` 接口，新增厂商=新增一个适配器，不改编排逻辑。
+
+**`manifest.json` 关键字段骨架（MV3，供 TASK-001 落地 / QA 核对；host 权限最终值待 Spike #3 拍板，见 ADR-5）：**
+
+```jsonc
+{
+  "manifest_version": 3,
+  "name": "StoryBoard AI",
+  "version": "0.1.0",
+  "side_panel": { "default_path": "src/sidepanel/index.html" },
+  "action": { "default_title": "StoryBoard AI" },   // 点击图标打开侧边栏
+  "permissions": [
+    "sidePanel",     // chrome.sidePanel
+    "storage"        // chrome.storage.local（设置/草稿/项目）
+    // 注：剪贴板用 navigator.clipboard（侧边栏是安全上下文），通常无需 "clipboardWrite"
+  ],
+  "host_permissions": [
+    // 仅内置已验证 Provider 域名（按域名最小化）；最终名单由 Spike #3 决定
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*"
+  ],
+  "optional_host_permissions": [
+    // 自定义 baseUrl 动态授权用，策略 A/B 见 ADR-5(4a)，由 Spike #3 二选一
+  ],
+  "background": { "service_worker": "src/background.ts" }  // 如需打开侧边栏/权限编排；纯侧边栏可精简
+}
+```
+> IndexedDB（存不可导出密钥）无需在 manifest 声明权限。
 
 ---
 
@@ -376,7 +404,13 @@ storyboard-ai/
 
 **(3) 自定义域名用 `optional_host_permissions` 动态申请（不预先申请）：** `manifest` 用 `optional_host_permissions`（MV3）声明可按需申请的范围；用户保存一个自定义 baseUrl 时，由代码调用 `chrome.permissions.request({ origins: ['https://该域名/*'] })` **当场弹窗申请该域名权限**，用户授权后才可用。已授权域名记录在设置里，下次直接用。
 
-**(4) 明确禁止：** **禁止在 `manifest` 默认申请 `<all_urls>` 或 `*://*/*`。** Code Review 必须把这条当硬性红线。host 权限只能是「内置已验证域名（静态）」+「用户逐个授权的自定义域名（动态）」。
+**(4) 明确禁止：** **禁止在 `manifest` 的 `host_permissions`（静态、安装即授权）里申请 `<all_urls>` 或 `*://*/*`。** Code Review 必须把这条当硬性红线。静态 host 权限只能是内置已验证域名。
+
+**(4a) 任意自定义域名的 MV3 现实约束（Spike #3 须拍板）：** 要在运行时对**事先不知道**的自定义 `https` 域名调用 `chrome.permissions.request`，该 origin 必须已被 `optional_host_permissions` 覆盖。两条可选策略，Spike 阶段二选一并落 manifest：
+> - **A（更宽松）：** `optional_host_permissions: ["https://*/*"]`。注意：放进 **optional** 不等于安装即授权——它只是「可被逐个域名弹窗申请」的池子，每个域名仍需用户当场点允许；但 Chrome Web Store 审核需要解释为何要这个范围。
+> - **B（更保守）：** 不支持任意 baseUrl，仅允许从一份**预声明 origin 白名单**里选/填（白名单写进 `optional_host_permissions`），牺牲灵活性换最小权限面与更顺的商店审核。
+>
+> 在 Spike 结论出来前，本项默认倾向 **B**；最终以 #3 的 CORS/审核可行性结论为准。无论 A/B，(4) 对**静态** `host_permissions` 的红线都不变。
 
 **(5) CORS / 权限失败的用户提示与降级（写入 `api-spec.md` 错误码）：**
 - **未获 host 权限**（用户拒绝授权，或调用前未授权）→ 提示「需要授权访问 {域名} 才能调用，请在弹窗中允许」，并提供「重新授权」按钮；不发请求。
@@ -471,4 +505,6 @@ storyboard-ai/
 
 ## 架构 Review 意见
 
-> _由架构 Review Agent 填写_
+> **REVIEW-001（含 rev2）：已完成，PO 已批准。** 架构 Review Agent 提出的 ARCH-HIGH-001（CORS/host 权限）、ARCH-HIGH-002（Key 安全边界）、ARCH-MED-001~004、ARCH-LOW-001~002 均已在本文档对应 ADR/章节落实（见顶部修订记录 v2 与各 ADR 标注）。架构三件套已合并至 `develop`（commit 2ff3465 / 704096b）。
+>
+> **唯一遗留前置项：** 第 9 节自检中的「开发前 Spike」（ADR-5(6)）尚未执行——这是开发 TASK-003/007 前的硬性闸门，跟踪于 GitHub Issue #3。该 Spike 还需顺带产出：已验证 Provider 名单、各自 baseUrl、最终 `host_permissions` / `optional_host_permissions` 模式、CORS 结论——这些将回填到第 1 节 ADR-5 与下方的 manifest 骨架。
