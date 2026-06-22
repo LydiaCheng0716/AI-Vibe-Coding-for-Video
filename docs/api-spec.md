@@ -10,6 +10,21 @@
 
 ---
 
+## 任务标注 ↔ GitHub Issue 对照
+
+本文档中的 `TASK-XXX` 是逻辑任务 ID，对应仓库 GitHub Issue（任务的唯一事实源）。散文中的标注已就地附上 issue 链接；代码块内的标注 GitHub 不会自动链接，统一以下表为准：
+
+| 任务 | Issue | 任务 | Issue |
+|------|-------|------|-------|
+| TASK-001 / 002 | #2 | TASK-006 | #8 |
+| TASK-003 | #5 | TASK-007 | #9 |
+| TASK-004 | #6 | TASK-008 | #10 |
+| TASK-005 | #7 | TASK-009 | #11 |
+
+> 另：开发前置技术验证（Spike，ADR-5）见 #3。
+
+---
+
 ## 0. 本规范的范围（先读这一节）
 
 StoryBoard AI 是 **纯客户端、用户自带 Key、无账号** 的 Chrome 侧边栏插件，**没有自建后端、没有自建 REST API**。因此本规范描述的是两类契约：
@@ -115,7 +130,7 @@ type ErrorCode =
 
 > 这些是组件层唯一可调用的服务入口。组件 **不得** 绕过它们直接 `fetch` 或直接读写 `chrome.storage`（见 architecture.md 第 3 节模块边界）。
 
-### 3.1 KeyVault Service（BYOK 密钥，TASK-002 / ADR-1）
+### 3.1 KeyVault Service（BYOK 密钥，TASK-002（#2） / ADR-1）
 
 ```ts
 // 保存（加密后落 chrome.storage.local；密钥落 IndexedDB）
@@ -139,7 +154,7 @@ clearApiKey(): Promise<Result<void>>;
 
 ---
 
-### 3.2 Storage Service（设置 / 草稿 / 项目，TASK-001 / 002 / 006）
+### 3.2 Storage Service（设置 / 草稿 / 项目，TASK-001 / 002 / 006，#2、#8）
 
 ```ts
 getSettings(): Promise<{ params: GenerationParams; provider: ProviderConfig }>;
@@ -179,7 +194,7 @@ interface ProviderConfig {
 
 ---
 
-### 3.3 Generation Service（编排，TASK-003 / 004 / 005）
+### 3.3 Generation Service（编排，TASK-003 / 004 / 005，#5、#6、#7）
 
 ```ts
 // 生成完整分镜（含角色识别与一致性注入、模板适配）
@@ -191,22 +206,22 @@ generateStoryboard(input: {
 
 **前置校验顺序（任一失败立即返回，不发出站请求）：**
 1. **全局 LLM 锁空闲** → 否则 `GENERATION_IN_PROGRESS`（ADR-3，分镜与 BGM 共享同一把锁，ARCH-MED-004）
-2. 故事非空 → 否则 `EMPTY_STORY`（TASK-001）
+2. 故事非空 → 否则 `EMPTY_STORY`（TASK-001，#2）
 3. 长度 ∈ [10, 5000]（**trim 后 Unicode 码点数**，ADR-2 / ARCH-MED-003）→ 否则 `STORY_TOO_SHORT` / `STORY_TOO_LONG`
-4. 已配置 Key 且可解密 → 否则 `NO_API_KEY` / `KEY_DECRYPT_FAILED`（TASK-002 / ADR-1）
+4. 已配置 Key 且可解密 → 否则 `NO_API_KEY` / `KEY_DECRYPT_FAILED`（TASK-002（#2） / ADR-1）
 5. 目标 Provider 域名已获 host 权限 → 否则 `HOST_PERMISSION_DENIED`（ADR-5）
 
-**成功后置校验（TASK-003 验收 + ADR-6，ARCH-MED-002）：**
+**成功后置校验（TASK-003（#5） 验收 + ADR-6，ARCH-MED-002）：**
 - 解析接受范围：纯 JSON 或首个 fenced/平衡 `{...}` 块；都失败 → `BAD_RESPONSE_FORMAT`（**不猜测、不补全截断 JSON**）。
 - `shots.length ∈ [3,10]`，且每个 `Shot` 的 `summary/shotSize/cameraMovement/durationSuggestion/prompt` 均为 trim 后非空字符串；任一不满足 → `BAD_RESPONSE_FORMAT`。
-- `characterRefs` 必须引用已有角色，对不上的引用丢弃；无明确人物时 `characters` 可为空，不强行编造（TASK-005）。
+- `characterRefs` 必须引用已有角色，对不上的引用丢弃；无明确人物时 `characters` 可为空，不强行编造（TASK-005，#7）。
 - 归一化由代码补齐 `id/index/editedByUser`，落成 `core/models.ts` 内部模型。
 
-> 角色识别+一致性注入（TASK-005）与模板适配（TASK-004）由本服务内部完成；可在同一次或多次 LLM 调用中实现，具体由 Developer 按本契约决定，但产出必须落到 `Project.characters` 与 `Shot.characterRefs/prompt`。
+> 角色识别+一致性注入（TASK-005，#7）与模板适配（TASK-004，#6）由本服务内部完成；可在同一次或多次 LLM 调用中实现，具体由 Developer 按本契约决定，但产出必须落到 `Project.characters` 与 `Shot.characterRefs/prompt`。
 
 ---
 
-### 3.4 BGM Service（TASK-007）
+### 3.4 BGM Service（TASK-007，#9）
 
 ```ts
 generateBgmPrompt(input: {
@@ -221,7 +236,7 @@ generateBgmPrompt(input: {
 
 ---
 
-### 3.5 Export Service（TASK-008）
+### 3.5 Export Service（TASK-008，#10）
 
 ```ts
 type ExportFormat = 'markdown' | 'json' | 'plaintext';
@@ -236,7 +251,7 @@ exportProject(p: Project, format: ExportFormat): Result<string>;
 - 导出 **默认不包含 Provider 凭据配置**（`baseUrl`、`grantedOrigins` 等可能暴露用户所用厂商/私有代理地址的字段）。
 - 导出只含创作内容：`story`、生成参数 `params`（非敏感）、`characters`、`shots`、`bgm`。`model` 名是否纳入由 PO 视为非敏感信息决定，默认可含（属生成参数）；若要更保守也可排除。
 
-### 3.6 Clipboard（TASK-006 / 007）
+### 3.6 Clipboard（TASK-006 / 007，#8、#9）
 
 ```ts
 copyToClipboard(text: string): Promise<Result<void>>;

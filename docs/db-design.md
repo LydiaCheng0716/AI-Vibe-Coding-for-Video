@@ -10,6 +10,21 @@
 
 ---
 
+## 任务标注 ↔ GitHub Issue 对照
+
+本文档中的 `TASK-XXX` 是逻辑任务 ID，对应仓库 GitHub Issue（任务的唯一事实源）。散文中的标注已就地附上 issue 链接；代码块内的标注 GitHub 不会自动链接，统一以下表为准：
+
+| 任务 | Issue | 任务 | Issue |
+|------|-------|------|-------|
+| TASK-001 / 002 | #2 | TASK-006 | #8 |
+| TASK-003 | #5 | TASK-007 | #9 |
+| TASK-004 | #6 | TASK-008 | #10 |
+| TASK-005 | #7 | TASK-009 | #11 |
+
+> 另：开发前置技术验证（Spike，ADR-5）见 #3。
+
+---
+
 ## 0. 说明：本产品没有服务端数据库
 
 StoryBoard AI 是 **纯客户端、无账号** 的 Chrome 插件（见 [architecture.md](architecture.md) 第 0 节、ADR-0）。因此：
@@ -36,10 +51,10 @@ StoryBoard AI 是 **纯客户端、无账号** 的 Chrome 插件（见 [architec
 
 | 存储键 | 内容 | 关联 TASK |
 |--------|------|-----------|
-| `settings` | `{ params: GenerationParams, provider: ProviderConfig, schemaVersion }` | TASK-002 |
-| `apiKeyCipher` | `{ ciphertext, iv, alg }`（API Key 的 AES-GCM 密文，**不含明文**） | TASK-002 / ADR-1 |
-| `draft` | `{ text, updatedAt }`（未提交故事草稿） | TASK-001 |
-| `currentProject` | `Project`（见下） | TASK-003/004/005/006/007/008 |
+| `settings` | `{ params: GenerationParams, provider: ProviderConfig, schemaVersion }` | TASK-002（#2） |
+| `apiKeyCipher` | `{ ciphertext, iv, alg }`（API Key 的 AES-GCM 密文，**不含明文**） | TASK-002（#2） / ADR-1 |
+| `draft` | `{ text, updatedAt }`（未提交故事草稿） | TASK-001（#2） |
+| `currentProject` | `Project`（见下） | TASK-003/004/005/006/007/008（#5、#6、#7、#8、#9、#10） |
 
 ### IndexedDB
 
@@ -51,7 +66,7 @@ StoryBoard AI 是 **纯客户端、无账号** 的 Chrome 插件（见 [architec
 
 ## 结构：`currentProject`
 
-> 字段名稳定，为未来「历史项目管理 / 导入」预留（TASK-008 要求 JSON 导出字段稳定）。
+> 字段名稳定，为未来「历史项目管理 / 导入」预留（TASK-008（#10） 要求 JSON 导出字段稳定）。
 
 ```jsonc
 {
@@ -81,9 +96,9 @@ StoryBoard AI 是 **纯客户端、无账号** 的 Chrome 插件（见 [architec
 ```
 
 **设计要点：**
-- 角色与镜头 **分离存储**，镜头通过 `characterRefs` 引用角色 id（TASK-005）。
-- `editedByUser` 保护用户手动编辑不被自动注入/再生成覆盖（TASK-005/006）。
-- 单镜头编辑只改对应 `shots[i]`，不动其他镜头（TASK-006）。
+- 角色与镜头 **分离存储**，镜头通过 `characterRefs` 引用角色 id（TASK-005，#7）。
+- `editedByUser` 保护用户手动编辑不被自动注入/再生成覆盖（TASK-005/006，#7、#8）。
+- 单镜头编辑只改对应 `shots[i]`，不动其他镜头（TASK-006，#8）。
 
 ---
 
