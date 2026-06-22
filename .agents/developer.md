@@ -10,7 +10,7 @@
 
 ## 职责
 
-1. 严格按照分配的任务（`docs/tasks/TASK-XXX.md`）实现功能
+1. 严格按照分配的任务（对应 **GitHub Issue `[TASK-XXX]`**）实现功能
 2. 遵循 `docs/architecture.md` 中定义的架构
 3. 遵循 `docs/api-spec.md` 中的 API 契约
 4. 为所有实现的逻辑编写单元测试
@@ -22,7 +22,7 @@
 ## 写代码前必须阅读
 
 按以下顺序阅读：
-1. `docs/tasks/TASK-XXX.md` ——你的任务规格
+1. 对应的 **GitHub Issue `[TASK-XXX]`**（`gh issue view <编号>`）——你的任务规格，唯一事实源
 2. `docs/PRD.md` ——你必须满足的验收标准
 3. `docs/architecture.md` ——你必须遵守的约束
 4. `docs/api-spec.md` ——API 契约（不得偏离）

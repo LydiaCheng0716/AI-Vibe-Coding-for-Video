@@ -2,15 +2,31 @@
 
 ## 状态
 
-> **状态：** 待复审（已按 REVIEW-001 修订）  
+> **状态：** 已通过 REVIEW-001 复审（PO 已批准并合并至 develop）· REVIEW-002 文档复审补订（见 v3，含若干新增错误码/契约说明，待 PO 知会）  
 > **作者：** Architect Agent  
 > **审查人：** 架构 Review Agent  
 > **批准人：** Human PO  
-> **最后更新：** 2026-06-17
+> **最后更新：** 2026-06-23
 >
 > **修订记录：**
 > - v1（2026-06-12）首版。
 > - v2（2026-06-17）按 REVIEW-001 审查反馈修订：ADR-1 收紧 Key 安全边界并加验收规则（ARCH-HIGH-002）；新增 ADR-5 CORS/host permissions 可执行约束（ARCH-HIGH-001）；新增 ADR-6 JSON schema/解析规则（ARCH-MED-002）；ADR-4 模型不硬编码（ARCH-MED-001）；ADR-2 统一码点计数（ARCH-MED-003）；ADR-3 全局并发锁（ARCH-MED-004）；ARCH-LOW-001/002 见 api-spec/db-design。
+> - v3（2026-06-23）REVIEW-002 文档复审（Claude + Codex 双复审）：隐私措辞校正（生成数据出站至用户所选厂商）；ADR-5 新增 (4a) 任意自定义域名的 `optional_host_permissions` 策略 A/B（待 Spike 拍板）；§3 补 MV3 `manifest.json` 关键字段骨架；填写「架构 Review 意见」；状态/日期更新。配套 api-spec v3、db-design v3。
+
+---
+
+## 任务标注 ↔ GitHub Issue 对照
+
+本文档中的 `TASK-XXX` 是逻辑任务 ID，对应仓库 GitHub Issue（任务的唯一事实源）。散文中的标注已就地附上 issue 链接；代码块内的标注 GitHub 不会自动链接，统一以下表为准：
+
+| 任务 | Issue | 任务 | Issue |
+|------|-------|------|-------|
+| TASK-001 / 002 | #2 | TASK-006 | #8 |
+| TASK-003 | #5 | TASK-007 | #9 |
+| TASK-004 | #6 | TASK-008 | #10 |
+| TASK-005 | #7 | TASK-009 | #11 |
+
+> 另：开发前置技术验证（Spike，ADR-5）见 #3。
 
 ---
 
@@ -22,7 +38,7 @@ StoryBoard AI 是一个 **纯客户端的 Chrome 侧边栏插件**（Manifest V3
 
 - **没有自建后端服务器、没有自建数据库、没有账号体系。** 插件直接在用户浏览器里运行。
 - **BYOK（Bring Your Own Key）：** 所有 AI 生成都是浏览器用 **用户自己的 LLM API Key** 直连 LLM 厂商接口完成的。我们不代理、不中转、不存储任何 Key 到云端。
-- **所有数据都在本地。** 故事草稿、生成参数、分镜结果、API Key 全部存在浏览器本地（`chrome.storage` / IndexedDB），不上云。
+- **数据默认存在本地，我们没有自建云端。** 故事草稿、生成参数、分镜结果、API Key 全部存在浏览器本地（`chrome.storage` / IndexedDB），我们不向任何自有服务器上传。**例外：** 点击生成时，故事文本、参数和提示词会随出站请求发送给**用户自己选择的 LLM 厂商**（用其 Key），受该厂商隐私政策约束——这是 BYOK 的固有前提，应在设置页向用户说明。
 
 > 这意味着 PRD「待决问题 #2、#3」和登录注册、Bearer Token、免费/付费限流等传统服务端概念在本产品 **不适用**，已在本架构和 API 规范中删除。本文档为开发者固化的是「插件内部模块契约」和「对 LLM 厂商的出站调用契约」，而不是一套自建 REST API。
 
@@ -33,7 +49,7 @@ StoryBoard AI 是一个 **纯客户端的 Chrome 侧边栏插件**（Manifest V3
 | 层级 | 技术选型 | 选型原因 |
 |------|---------|---------|
 | 运行形态 | Chrome 扩展 Manifest V3 + Side Panel API（`chrome.sidePanel`） | PRD 明确要求 Chrome 侧边栏；MV3 是当前唯一被 Chrome 接受的扩展形态 |
-| 前端框架 | React 18 + TypeScript | 组件化适合分镜卡片列表与参数表单；TS 在「结构化分镜模型」上能提供编译期保障，契合 TASK-003 要求 |
+| 前端框架 | React 18 + TypeScript | 组件化适合分镜卡片列表与参数表单；TS 在「结构化分镜模型」上能提供编译期保障，契合 TASK-003（#5） 要求 |
 | 构建工具 | Vite + `@crxjs/vite-plugin` | 对 MV3 扩展支持好，HMR 开发体验佳，产物即可直接 `load unpacked` |
 | 样式 | Tailwind CSS（或等价的原子化方案，由开发实现细节决定） | 侧边栏宽度有限，原子化样式利于快速排版；非强制 |
 | 本地存储 | `chrome.storage.local`（设置/草稿/结果） + IndexedDB（存放非导出 WebCrypto 密钥） | 见「ADR-1 API Key 安全策略」与「本地存储数据模型」 |
@@ -144,14 +160,41 @@ storyboard-ai/
 
 - **组件层只负责 UI 与本地状态**，不直接 `fetch` LLM、不直接读写 `chrome.storage`，统一走 `services/`。
 - **`services/generation.ts` 是唯一编排入口**：它调用 prompt 构造、Provider、parser、validate，组件不绕过它直接拼提示词。
-- **`core/config.ts` 是唯一的常量来源**：长度上下限、限流并发、重试次数、模型枚举集中在此，禁止散落在 UI 或 service 里（TASK-001 / TASK-002 技术说明已点名）。
+- **`core/config.ts` 是唯一的常量来源**：长度上下限、限流并发、重试次数、模型枚举集中在此，禁止散落在 UI 或 service 里（TASK-001（#2） / TASK-002（#2） 技术说明已点名）。
 - **Provider 抽象层屏蔽厂商差异**：上层只面向 `LlmProvider` 接口，新增厂商=新增一个适配器，不改编排逻辑。
+
+**`manifest.json` 关键字段骨架（MV3，供 TASK-001 落地 / QA 核对；host 权限最终值待 Spike #3 拍板，见 ADR-5）：**
+
+```jsonc
+{
+  "manifest_version": 3,
+  "name": "StoryBoard AI",
+  "version": "0.1.0",
+  "side_panel": { "default_path": "src/sidepanel/index.html" },
+  "action": { "default_title": "StoryBoard AI" },   // 点击图标打开侧边栏
+  "permissions": [
+    "sidePanel",     // chrome.sidePanel
+    "storage"        // chrome.storage.local（设置/草稿/项目）
+    // 注：剪贴板用 navigator.clipboard（侧边栏是安全上下文），通常无需 "clipboardWrite"
+  ],
+  "host_permissions": [
+    // 仅内置已验证 Provider 域名（按域名最小化）；最终名单由 Spike #3 决定
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*"
+  ],
+  "optional_host_permissions": [
+    // 自定义 baseUrl 动态授权用，策略 A/B 见 ADR-5(4a)，由 Spike #3 二选一
+  ],
+  "background": { "service_worker": "src/background.ts" }  // 如需打开侧边栏/权限编排；纯侧边栏可精简
+}
+```
+> IndexedDB（存不可导出密钥）无需在 manifest 声明权限。
 
 ---
 
 ## 4. 数据流（端到端，以「生成分镜」为例）
 
-1. 用户在 `StoryInput` 输入故事；输入即时写入 `storage.ts` 的草稿（TASK-001 草稿恢复）。
+1. 用户在 `StoryInput` 输入故事；输入即时写入 `storage.ts` 的草稿（TASK-001（#2） 草稿恢复）。
 2. 用户点「生成」。`App` 调用 `generation.ts`。
 3. `generation.ts` 先做前置校验：
    - 通过 `validate.ts` 校验故事长度（**ADR-2**：< 下限或 > 上限直接拦截并提示，不发请求）。
@@ -160,11 +203,11 @@ storyboard-ai/
 4. `generation.ts` 用 `prompts/storyboard.ts` + 选中的 `templates/*` + 参数构造请求体，要求模型 **以结构化 JSON** 返回 3–10 个镜头。
 5. 经 `llm/provider.ts` 选出的适配器，用 `lib/retry.ts` 包裹 `fetch` 直连厂商接口（携带用户 Key）。
 6. 收到响应后，`core/parse.ts` 解析为结构化分镜模型并 `validate.ts` 校验完整性：
-   - 任一镜头缺概要/景别/运镜/时长/提示词 → 标记结果无效，提示用户重试（TASK-003 验收）。
+   - 任一镜头缺概要/景别/运镜/时长/提示词 → 标记结果无效，提示用户重试（TASK-003（#5） 验收）。
 7. 结构化结果写入 `storage.ts`（本地当前项目），UI 渲染 `ShotList`。
-8. 后续局部编辑、单镜头复制、BGM、导出都作用于这份本地结构化数据，不重新触发整套生成（TASK-006/007/008）。
+8. 后续局部编辑、单镜头复制、BGM、导出都作用于这份本地结构化数据，不重新触发整套生成（TASK-006/007/008，#8、#9、#10）。
 
-**失败分支（TASK-003 技术说明要求覆盖）：**
+**失败分支（TASK-003（#5） 技术说明要求覆盖）：**
 
 | 失败类型 | 来源 | 处理 |
 |---------|------|------|
@@ -184,10 +227,10 @@ storyboard-ai/
 | `settings` | `chrome.storage.local` | 生成参数（目标视频模型、画面风格、画幅比例、单镜头时长偏好、输出语言）、所选 Provider、模型、`schemaVersion` | 不含明文 Key |
 | `apiKeyCipher` | `chrome.storage.local` | API Key 的 **AES-GCM 密文** + IV + 算法元信息 | 见 ADR-1；明文不落盘 |
 | `cryptoKey`（句柄） | IndexedDB | **不可导出** 的 WebCrypto `CryptoKey`（AES-GCM 256） | 用于解密 `apiKeyCipher`；原始密钥字节永不出现在可读存储里 |
-| `draft` | `chrome.storage.local` | 未提交的故事草稿文本 + 时间戳 | TASK-001 草稿恢复 |
-| `currentProject` | `chrome.storage.local` | 当前分镜项目（见下方结构） | TASK-003/004/005/006/007/008 共用 |
+| `draft` | `chrome.storage.local` | 未提交的故事草稿文本 + 时间戳 | TASK-001（#2） 草稿恢复 |
+| `currentProject` | `chrome.storage.local` | 当前分镜项目（见下方结构） | TASK-003/004/005/006/007/008（#5、#6、#7、#8、#9、#10） 共用 |
 
-**`currentProject` 结构（稳定字段名，为未来「历史项目/导入」预留——TASK-008 要求）：**
+**`currentProject` 结构（稳定字段名，为未来「历史项目/导入」预留——TASK-008（#10） 要求）：**
 
 ```jsonc
 {
@@ -221,9 +264,9 @@ storyboard-ai/
 }
 ```
 
-- 角色与镜头分离存储、镜头通过 `characterRefs` 引用角色（TASK-005 要求）。
-- `editedByUser` 标记保护用户手动编辑不被后续注入/再生成覆盖（TASK-005/006 要求）。
-- JSON 导出直接序列化此结构的稳定字段（TASK-008 要求）。
+- 角色与镜头分离存储、镜头通过 `characterRefs` 引用角色（TASK-005（#7） 要求）。
+- `editedByUser` 标记保护用户手动编辑不被后续注入/再生成覆盖（TASK-005/006（#7、#8） 要求）。
+- JSON 导出直接序列化此结构的稳定字段（TASK-008（#10） 要求）。
 
 ---
 
@@ -247,7 +290,7 @@ storyboard-ai/
 
 ### ADR-1：API Key 本地保存的安全策略（PRD 待决 #2）
 
-**背景：** BYOK 必须在本地保存用户的 LLM API Key 供后续生成复用（TASK-002 验收），同时「重新打开侧边栏应展示已配置状态但不明文暴露完整 Key」。需要决定：是否加密、怎么存。
+**背景：** BYOK 必须在本地保存用户的 LLM API Key 供后续生成复用（TASK-002（#2） 验收），同时「重新打开侧边栏应展示已配置状态但不明文暴露完整 Key」。需要决定：是否加密、怎么存。
 
 **备选方案：**
 1. 明文存 `chrome.storage.local` — 优点：最简单；缺点：浏览器配置目录里的存储文件是明文，磁盘被读取（备份、二手电脑、恶意取证）即泄露。
@@ -271,7 +314,7 @@ storyboard-ai/
 1. **明文 Key 的作用域最小化：** 明文只允许在「发起一次出站请求」的同步调用链里临时存在；请求构造完成后不得保留引用。`getApiKeyForRequest()` 返回的明文 **禁止** 被赋值给 React state、组件 props、模块级变量、`localStorage`/`sessionStorage` 或任何持久缓存。
 2. **禁止泄露通道：** 明文 Key **禁止** 写入 `console.*` 日志、`Error` 对象的 message/stack、异常上报、网络请求的可记录字段（URL/query）、以及任何导出内容（见 ARCH-LOW-002）。
 3. **只存密文：** `chrome.storage.local` 只存 `apiKeyCipher`（密文+IV+算法元信息），**禁止** 任何键里出现明文 Key；**禁止** `chrome.storage.sync` 存 Key。
-4. **UI 掩码：** 只显示 `sk-...AB12`（仅末 4 位），不回显完整 Key（TASK-002 验收）。
+4. **UI 掩码：** 只显示 `sk-...AB12`（仅末 4 位），不回显完整 Key（TASK-002（#2） 验收）。
 5. **删除：** 「删除 Key」一键清除 `apiKeyCipher` 与 IndexedDB 密钥。
 6. **解密/密钥损坏的恢复策略（防「已配置但用不了」坏状态）：** 解密失败、或 IndexedDB 里的 `CryptoKey` 丢失/损坏时，`keyVault` 应**清理损坏状态**（删除无法解密的 `apiKeyCipher` 与残留密钥句柄）、把 `hasApiKey()` 视为 false，并提示用户**重新输入 Key**，而不是反复报错或卡在不可用状态。
 7. **设置页用户提示（原文级要求）：** 设置页须有一句用户能懂的说明，例如：「你的 API Key 已在本机加密保存，只用于直接调用 AI 服务。本地加密能降低硬盘被读取时的泄露风险，但无法防护已被恶意软件控制的浏览器或设备——请只在你信任的电脑上保存 Key。」
@@ -285,7 +328,7 @@ storyboard-ai/
 
 ### ADR-2：故事输入长度上下限（PRD 待决 #3 之一）
 
-**背景：** 太短无法拆出 3–10 个有意义镜头；太长抬高 LLM 成本、可能撞上下文/请求体上限（TASK-001 校验、TASK-003 生成都依赖此约束）。需要给出 **集中可配置** 的具体数值（TASK-001 技术说明要求集中配置）。
+**背景：** 太短无法拆出 3–10 个有意义镜头；太长抬高 LLM 成本、可能撞上下文/请求体上限（TASK-001（#2） 校验、TASK-003（#5） 生成都依赖此约束）。需要给出 **集中可配置** 的具体数值（TASK-001（#2） 技术说明要求集中配置）。
 
 **计数口径（ARCH-MED-003，统一为唯一标准）：** 所有长度判断都按 **「去除首尾空白后的 Unicode 码点数」** 计算，即 `[...story.trim()].length`（用展开运算符/`Intl.Segmenter` 按码点计，**不要** 直接用 `story.length`——后者是 UTF-16 code unit，emoji、组合字符会与「字」的直觉不符）。UI 文案统一称「字」，与该口径对齐。计数函数集中在 `core/validate.ts`，阈值集中在 `core/config.ts`。
 
@@ -293,7 +336,7 @@ storyboard-ai/
 
 | 规则 | 阈值（trim 后码点数） | 行为 |
 |------|------|------|
-| 硬下限 | **10 字** | 低于则禁止提交，提示「故事内容太短，至少 10 个字」（TASK-001：空/过短拦截） |
+| 硬下限 | **10 字** | 低于则禁止提交，提示「故事内容太短，至少 10 个字」（TASK-001（#2）：空/过短拦截） |
 | 软建议下限 | **30 字** | 10–30 之间允许生成，但给柔性提示「内容较少，分镜可能比较笼统」 |
 | 硬上限 | **5000 字** | 超过则禁止提交，提示「故事过长（上限 5000 字），请精简」 |
 | 软提示上限 | **2000 字** | 2000–5000 之间允许，但提示「内容较长，生成会消耗更多额度」 |
@@ -306,14 +349,14 @@ storyboard-ai/
 
 ### ADR-3：单次生成的限流与失败重试（PRD 待决 #3 之二、之三）
 
-**背景：** BYOK 且无后端，「限流」的目的不是保护我们的服务器，而是 **保护用户**：避免误触发并发请求烧额度、避免对厂商造成 429、保证 UI 状态可控（TASK-003 验收：等待时展示加载态并防止重复提交）。
+**背景：** BYOK 且无后端，「限流」的目的不是保护我们的服务器，而是 **保护用户**：避免误触发并发请求烧额度、避免对厂商造成 429、保证 UI 状态可控（TASK-003（#5） 验收：等待时展示加载态并防止重复提交）。
 
 **决定（写入 `core/config.ts` 与 `lib/retry.ts`）：**
 
-- **并发限流：全局 LLM 请求锁，并发=1（ARCH-MED-004）。** 「分镜生成」与「BGM 生成」**共享同一个全局锁**——任意一类 LLM 请求进行中时，所有生成按钮（分镜、BGM 及任何后续生成入口）都禁用并展示加载态，新点击被忽略（TASK-003 防重复提交）。这样能真正达成「保护用户额度、防重复提交」的目标，避免分镜与 BGM 各自有锁导致同时打两个请求。锁实现在 `services/generation.ts`（或单独的 `llmLock` 模块），所有出站生成统一经过它。无需额外冷却时间，按钮态即足够。
+- **并发限流：全局 LLM 请求锁，并发=1（ARCH-MED-004）。** 「分镜生成」与「BGM 生成」**共享同一个全局锁**——任意一类 LLM 请求进行中时，所有生成按钮（分镜、BGM 及任何后续生成入口）都禁用并展示加载态，新点击被忽略（TASK-003（#5） 防重复提交）。这样能真正达成「保护用户额度、防重复提交」的目标，避免分镜与 BGM 各自有锁导致同时打两个请求。锁实现在 `services/generation.ts`（或单独的 `llmLock` 模块），所有出站生成统一经过它。无需额外冷却时间，按钮态即足够。
 - **单请求超时：** 分镜生成 90s、BGM 等较短生成 60s（输出更长的生成给更宽超时）。
 - **自动重试（仅瞬时错误）：** 对 **网络错误 / 超时 / 429 / 5xx** 自动重试，**最多 2 次（合计 3 次尝试）**；指数退避 1s → 2s 并加随机抖动；遇 429 优先遵循响应的 `Retry-After`。
-- **不自动重试：** 401/403（鉴权）和「返回格式解析失败」——这两类重发同样的请求大概率再失败，直接把可理解的错误抛给用户，并提供手动重试入口（TASK-003 失败场景全覆盖）。
+- **不自动重试：** 401/403（鉴权）和「返回格式解析失败」——这两类重发同样的请求大概率再失败，直接把可理解的错误抛给用户，并提供手动重试入口（TASK-003（#5） 失败场景全覆盖）。
 
 **原因：** 客户端 BYOK 场景下，瞬时网络/限流/服务端抖动是唯一值得自动重试的类别；对它们做有限次退避重试能显著改善「偶发失败」体验，又不会在鉴权或格式错误上空烧用户额度。并发=1 是最简单可靠的「防重复提交 + 控成本」手段。
 
@@ -323,7 +366,7 @@ storyboard-ai/
 
 ### ADR-4：LLM Provider 与默认模型（顺带拍板 PRD 待决 #1）
 
-**背景：** PRD 待决 #1 问「模型列表由谁定」。作为 Architect，在此固化 MVP 的 Provider/模型策略，以便 API 规范与 TASK-002 模型枚举落地。
+**背景：** PRD 待决 #1 问「模型列表由谁定」。作为 Architect，在此固化 MVP 的 Provider/模型策略，以便 API 规范与 TASK-002（#2） 模型枚举落地。
 
 **决定：**
 - 以 **OpenAI 兼容 Chat Completions** 为主契约（覆盖 OpenAI、DeepSeek、Moonshot/Kimi、智谱 GLM 等大量「OpenAI 兼容 + 自定义 base_url」的厂商），并提供 **Anthropic Messages** 适配器。
@@ -334,7 +377,7 @@ storyboard-ai/
   - `api-spec.md` 里出现的模型名（如 `claude-opus-4-8`）一律视为**示例占位**，不是枚举、不是默认硬编码值。
   - 首次配置后若模型名无效，按出站错误（401/403 或 4xx）走 ADR-3 的「不重试 + 可理解提示」，提示用户检查模型名。
 - 「默认 Provider」：MVP 设置页默认选中 **OpenAI 兼容**（覆盖面最广），但不预填 baseUrl/模型/Key，全部由用户填写。
-- 「目标视频模型」（即梦/可灵/Sora/Runway/通用）是 **提示词模板维度**，与「生成用的 LLM Provider」是两件事，不可混淆（TASK-002/004）。
+- 「目标视频模型」（即梦/可灵/Sora/Runway/通用）是 **提示词模板维度**，与「生成用的 LLM Provider」是两件事，不可混淆（TASK-002/004，#2、#6）。
 
 > **仍需 PO 拍板：** 是否要在文档/设置页给出一组「官方推荐占位模型名」清单（纯展示用）。这不阻塞开发——即使为空，用户手填模型名的链路也成立。
 
@@ -361,14 +404,20 @@ storyboard-ai/
 
 **(3) 自定义域名用 `optional_host_permissions` 动态申请（不预先申请）：** `manifest` 用 `optional_host_permissions`（MV3）声明可按需申请的范围；用户保存一个自定义 baseUrl 时，由代码调用 `chrome.permissions.request({ origins: ['https://该域名/*'] })` **当场弹窗申请该域名权限**，用户授权后才可用。已授权域名记录在设置里，下次直接用。
 
-**(4) 明确禁止：** **禁止在 `manifest` 默认申请 `<all_urls>` 或 `*://*/*`。** Code Review 必须把这条当硬性红线。host 权限只能是「内置已验证域名（静态）」+「用户逐个授权的自定义域名（动态）」。
+**(4) 明确禁止：** **禁止在 `manifest` 的 `host_permissions`（静态、安装即授权）里申请 `<all_urls>` 或 `*://*/*`。** Code Review 必须把这条当硬性红线。静态 host 权限只能是内置已验证域名。
+
+**(4a) 任意自定义域名的 MV3 现实约束（Spike #3 须拍板）：** 要在运行时对**事先不知道**的自定义 `https` 域名调用 `chrome.permissions.request`，该 origin 必须已被 `optional_host_permissions` 覆盖。两条可选策略，Spike 阶段二选一并落 manifest：
+> - **A（更宽松）：** `optional_host_permissions: ["https://*/*"]`。注意：放进 **optional** 不等于安装即授权——它只是「可被逐个域名弹窗申请」的池子，每个域名仍需用户当场点允许；但 Chrome Web Store 审核需要解释为何要这个范围。
+> - **B（更保守）：** 不支持任意 baseUrl，仅允许从一份**预声明 origin 白名单**里选/填（白名单写进 `optional_host_permissions`），牺牲灵活性换最小权限面与更顺的商店审核。
+>
+> 在 Spike 结论出来前，本项默认倾向 **B**；最终以 #3 的 CORS/审核可行性结论为准。无论 A/B，(4) 对**静态** `host_permissions` 的红线都不变。
 
 **(5) CORS / 权限失败的用户提示与降级（写入 `api-spec.md` 错误码）：**
 - **未获 host 权限**（用户拒绝授权，或调用前未授权）→ 提示「需要授权访问 {域名} 才能调用，请在弹窗中允许」，并提供「重新授权」按钮；不发请求。
 - **CORS 被拦**（请求发出但被浏览器/厂商跨域策略拒绝）→ 提示「该服务可能不支持在浏览器插件中直接调用，请改用受支持的 Provider（如 OpenAI 兼容厂商）或换一个 baseUrl」，引导用户切换，而不是静默失败。
 - 这两类失败**不计入 ADR-3 的自动重试**（重试同样会被拒），直接提示并给手动操作入口。
 
-**(6) 开发前技术 Spike（验收前置，ARCH-HIGH-001 明确要求）：** **进入正式开发前，必须做一个最小 Spike**，在真实 Chrome 扩展环境（`load unpacked`）里验证「至少一个 OpenAI 兼容 Provider」与「Anthropic」能从扩展上下文成功发起真实生成请求（含 host 权限申请流程跑通）。Spike 结论决定 (1) 表里内置 Provider 的最终名单。**Spike 未通过前不开始 TASK-003 / TASK-007 的正式实现。**
+**(6) 开发前技术 Spike（验收前置，ARCH-HIGH-001 明确要求）：** **进入正式开发前，必须做一个最小 Spike**，在真实 Chrome 扩展环境（`load unpacked`）里验证「至少一个 OpenAI 兼容 Provider」与「Anthropic」能从扩展上下文成功发起真实生成请求（含 host 权限申请流程跑通）。Spike 结论决定 (1) 表里内置 Provider 的最终名单。**Spike 未通过前不开始 TASK-003（#5） / TASK-007（#9） 的正式实现。**
 
 **原因：** 把「能不能在浏览器里直连厂商」从「文档里一句提醒」升级成「准入分类 + 动态授权 + 禁 all_urls + 失败降级 + 开发前 Spike」的可执行约束，既保住核心链路可用性，又把权限面压到最小。
 
@@ -401,10 +450,10 @@ storyboard-ai/
 3. 仍失败 → 判格式异常，**不做自由文本猜测、不补全截断 JSON**，提示用户重试（ADR-3：解析失败不自动重试）。
 
 **(3) 校验规则（解析成功后，任一不满足即 `BAD_RESPONSE_FORMAT`）：**
-- `shots` 是数组且 `length ∈ [3, 10]`（TASK-003）；
+- `shots` 是数组且 `length ∈ [3, 10]`（TASK-003，#5）；
 - 每个 shot 的 `summary / shotSize / cameraMovement / durationSuggestion / prompt` 均为**非空字符串**（trim 后非空）；
 - `characterRefs`（若有）必须引用**已存在的角色**（名字或序号能对上 `characters`），对不上的引用丢弃而非报错；
-- 故事无明确人物时 `characters` 允许为空数组，**不强行编造**（TASK-005）；
+- 故事无明确人物时 `characters` 允许为空数组，**不强行编造**（TASK-005，#7）；
 - 归一化：解析后由代码补齐 `id`、`index`（1..N）、`editedByUser=false`、把 `characterRefs` 统一成内部 `Character.id`，落成第 5 节的内部模型。
 
 **(4) 大小保护：** 出站 `max_tokens` 设上限（见 api-spec）；若响应超出预期体积或 `finish_reason` 指示截断，按格式异常处理并提示重试。
@@ -421,7 +470,7 @@ storyboard-ai/
 - **MVP 的「10 倍负载」问题不适用**（没有共享服务端）。真正的扩展点在功能维度：
   - 历史项目管理 / 多项目：把 `currentProject` 升级为 `projects[]`，`schemaVersion` 已预留迁移空间。
   - 跨设备同步、免 Key（付费）模式、视频/BGM API 直连：均需引入后端与账号，属 PRD 未来阶段，届时在 Provider 层与存储层之上叠加，不影响当前模块边界。
-  - 更多提示词模板：`prompts/templates/` 注册表已为扩展设计（TASK-004）。
+  - 更多提示词模板：`prompts/templates/` 注册表已为扩展设计（TASK-004，#6）。
 
 ---
 
@@ -456,4 +505,6 @@ storyboard-ai/
 
 ## 架构 Review 意见
 
-> _由架构 Review Agent 填写_
+> **REVIEW-001（含 rev2）：已完成，PO 已批准。** 架构 Review Agent 提出的 ARCH-HIGH-001（CORS/host 权限）、ARCH-HIGH-002（Key 安全边界）、ARCH-MED-001~004、ARCH-LOW-001~002 均已在本文档对应 ADR/章节落实（见顶部修订记录 v2 与各 ADR 标注）。架构三件套已合并至 `develop`（commit 2ff3465 / 704096b）。
+>
+> **唯一遗留前置项：** 第 9 节自检中的「开发前 Spike」（ADR-5(6)）尚未执行——这是开发 TASK-003/007 前的硬性闸门，跟踪于 GitHub Issue #3。该 Spike 还需顺带产出：已验证 Provider 名单、各自 baseUrl、最终 `host_permissions` / `optional_host_permissions` 模式、CORS 结论——这些将回填到第 1 节 ADR-5 与下方的 manifest 骨架。

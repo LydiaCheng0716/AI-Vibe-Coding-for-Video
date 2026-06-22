@@ -3,9 +3,9 @@
 ## 项目概览
 
 > **产品名称：** StoryBoard AI  
-> **状态：** 草稿  
+> **状态：** 已评审（PRD/架构经 REVIEW-001，PO 已批准）· 已转 GitHub Issues · 进入开发  
 > **负责人：** Human PO  
-> **最后更新：** 2026-06-12
+> **最后更新：** 2026-06-23
 
 StoryBoard AI 是一个 Chrome 侧边栏插件，帮助短视频创作者和普通用户把口语化故事描述，自动转换成结构化分镜脚本、AI 视频生成提示词和可选 BGM 提示词。
 
@@ -20,6 +20,8 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 ---
 
 ## 目标
+
+> 下方 `[x]` 表示 **已确认纳入 MVP 范围**（非"已实现"）。实现/测试完成度以对应 GitHub Issue 的勾选为准。
 
 - [x] 用户可以在 1 分钟内把一个生活故事或短视频创意输入插件。
 - [x] 用户点击生成后，能得到 3-10 个清晰、可读、可编辑的分镜，而不是一大段不可控文本。
@@ -53,12 +55,12 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 
 | Epic ID | 标题 | 优先级 | 状态 |
 |---------|------|--------|------|
-| EPIC-001 | Chrome 侧边栏与基础输入 | 高 | 草稿 |
-| EPIC-002 | 生成参数与 BYOK 设置 | 高 | 草稿 |
-| EPIC-003 | AI 分镜与视频提示词生成 | 高 | 草稿 |
-| EPIC-004 | 人物一致性与模板适配 | 高 | 草稿 |
-| EPIC-005 | 分镜编辑、复制与导出 | 高 | 草稿 |
-| EPIC-006 | BGM 提示词生成 | 中 | 草稿 |
+| EPIC-001 | Chrome 侧边栏与基础输入 | 高 | 已排期（见 Issues） |
+| EPIC-002 | 生成参数与 BYOK 设置 | 高 | 已排期（见 Issues） |
+| EPIC-003 | AI 分镜与视频提示词生成 | 高 | 已排期（见 Issues） |
+| EPIC-004 | 人物一致性与模板适配 | 高 | 已排期（见 Issues） |
+| EPIC-005 | 分镜编辑、复制与导出 | 高 | 已排期（见 Issues） |
+| EPIC-006 | BGM 提示词生成 | 中 | 已排期（见 Issues） |
 
 ---
 
@@ -79,15 +81,19 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 **STORY-002**  
 作为免费用户，我希望配置自己的 LLM API Key 和生成参数，以便在不登录、不订阅的情况下生成基础分镜。
 
+> **注意两个不同概念（架构 ADR-4）：** ①「**LLM Provider 设置**」= 真正发起生成的大模型（provider 类型 / baseUrl / 模型名 / API Key）；②「**视频提示词目标**」= 提示词要适配哪个视频工具（即梦/可灵/Sora/Runway/generic），只影响模板，不是生成用的 LLM。二者不可混淆。
+
 **验收标准：**
 - [ ] Given 用户未配置 API Key，When 用户点击生成，Then 系统应提示配置 BYOK 后再生成。
-- [ ] Given 用户配置 API Key，When 用户保存设置，Then 系统应在本地安全保存该设置并允许后续生成使用。
-- [ ] Given 用户打开参数区，When 用户选择目标视频模型、画面风格、画幅比例、单镜头时长偏好和输出语言，Then 系统应把这些参数用于本次生成。
+- [ ] Given 用户配置 LLM Provider（provider/baseUrl/模型名/API Key），When 用户保存设置，Then 系统应在本地安全保存并允许后续生成使用。
+- [ ] Given 用户打开参数区，When 用户选择**目标视频模型**、画面风格、画幅比例、单镜头时长偏好和输出语言，Then 系统应把这些参数用于本次生成。
 
 ### EPIC-003：AI 分镜与视频提示词生成
 
 **STORY-003**  
 作为创作者，我希望系统把故事拆成 3-10 个镜头，并为每个镜头生成完整视频提示词，以便直接复制到 AI 视频工具中使用。
+
+> **前置闸门：** 本 Epic 的 AI 生成任务（TASK-003、TASK-007）开工前，必须先通过浏览器直连 Provider 的技术 Spike（架构 ADR-5(6)，GitHub Issue #3）。Spike 未通过不得开始实现。
 
 **验收标准：**
 - [ ] Given 用户输入有效故事和参数，When 用户点击生成，Then 系统应返回 3-10 个镜头。
@@ -114,7 +120,9 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 **验收标准：**
 - [ ] Given 已生成分镜，When 用户编辑某个镜头的提示词，Then 系统应只更新该镜头内容并保留其他镜头不变。
 - [ ] Given 已生成分镜，When 用户点击单个镜头的复制按钮，Then 系统应复制该镜头提示词到剪贴板并给出成功反馈。
+- [ ] Given 剪贴板复制失败，When 用户点击复制，Then 系统应给出失败提示并保留镜头内容（不静默失败）。
 - [ ] Given 已生成分镜，When 用户选择 Markdown、JSON 或纯文本导出，Then 系统应生成包含完整分镜和提示词的对应格式内容。
+- [ ] Given 当前没有分镜结果，When 用户点击导出，Then 系统应提示先生成分镜。
 
 ### EPIC-006：BGM 提示词生成
 
@@ -125,22 +133,28 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 - [ ] Given 已输入故事或已生成分镜，When 用户点击生成 BGM 提示词，Then 系统应输出适配 Suno / 海绵音乐等 AI 音乐工具的音乐提示词。
 - [ ] Given 用户选择输出语言，When 系统生成 BGM 提示词，Then BGM 提示词应使用用户选择的输出语言。
 - [ ] Given BGM 提示词已生成，When 用户点击复制，Then 系统应复制 BGM 提示词到剪贴板并给出成功反馈。
+- [ ] Given 既无故事文本也无分镜结果，When 用户点击生成 BGM 提示词，Then 系统应提示先输入故事或生成分镜。
 
 ---
 
 ## 任务列表
 
-| 任务 ID | 标题 | Epic | 依赖 | 负责人 | 状态 |
-|--------|------|------|------|--------|------|
-| TASK-001 | Chrome 侧边栏插件壳与故事输入 | EPIC-001 | 无 | Developer Agent | 待开始 |
-| TASK-002 | BYOK 设置与生成参数选择 | EPIC-002 | TASK-001 | Developer Agent | 待开始 |
-| TASK-003 | 分镜生成请求与结构化结果解析 | EPIC-003 | TASK-001, TASK-002 | Developer Agent | 待开始 |
-| TASK-004 | 视频提示词模板适配 | EPIC-003 / EPIC-004 | TASK-003 | Developer Agent | 待开始 |
-| TASK-005 | 角色识别与人物一致性注入 | EPIC-004 | TASK-003 | Developer Agent | 待开始 |
-| TASK-006 | 分镜卡片查看、编辑与单镜头复制 | EPIC-005 | TASK-003 | Developer Agent | 待开始 |
-| TASK-007 | BGM 提示词生成与复制 | EPIC-006 | TASK-003 | Developer Agent | 待开始 |
-| TASK-008 | Markdown、JSON、纯文本导出 | EPIC-005 | TASK-003 | Developer Agent | 待开始 |
-| TASK-009 | 生成失败、重试与加载状态 | EPIC-003 / EPIC-006 | TASK-003 | Developer Agent | 待开始 |
+> **任务详情、验收标准和状态以 GitHub Issues 为唯一事实源**（`docs/tasks/*.md` 已废弃删除）。下表仅为高层索引，依赖与状态请以 Issue 为准。
+>
+> **注：** TASK-001 与 TASK-002 合并在 **伞形 Issue #2**（第一批：无 AI、无需等 Spike，可立即开跑）；该 Issue 内含两个任务各自完整的验收标准与独立 feature 分支。其余任务一一对应单个 Issue。
+
+| 任务 ID | 标题 | Epic | 依赖 | Issue |
+|--------|------|------|------|-------|
+| TASK-001 | Chrome 侧边栏插件壳与故事输入 | EPIC-001 | 无 | #2 |
+| TASK-002 | BYOK 设置与生成参数选择 | EPIC-002 | TASK-001 | #2 |
+| TASK-003 | 分镜生成请求与结构化结果解析 | EPIC-003 | TASK-001, TASK-002 | #5 |
+| TASK-004 | 视频提示词模板适配 | EPIC-003 / EPIC-004 | TASK-003 | #6 |
+| TASK-005 | 角色识别与人物一致性注入 | EPIC-004 | TASK-003 | #7 |
+| TASK-006 | 分镜卡片查看、编辑与单镜头复制 | EPIC-005 | TASK-003 | #8 |
+| TASK-007 | BGM 提示词生成与复制 | EPIC-006 | TASK-003 | #9 |
+| TASK-008 | Markdown、JSON、纯文本导出 | EPIC-005 | TASK-003 | #10 |
+| TASK-009 | 生成失败、重试与加载状态 | EPIC-003 / EPIC-006 | TASK-003 | #11 |
+| （前置）| Chrome 扩展真实环境 Provider 直连验证 | — | — | #3 (Spike) |
 
 ---
 
@@ -161,6 +175,6 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 
 | # | 问题 | 负责人 | 截止日期 |
 |---|------|--------|---------|
-| 1 | MVP 支持的 LLM Provider 和模型列表是否由 Architect 决定，还是 PO 指定默认项？ | PO / Architect | 架构阶段 |
+| 1 | LLM Provider/模型策略已由 Architect 定稿（ADR-4）：内置 OpenAI 兼容 + Anthropic 两类适配器；**模型名由用户填写、不硬编码默认值**；内置 Provider 名单以开发前 Spike（#3）结论为准。 | Architect | 已完成 |
 | 2 | API Key 本地保存策略已由 Architect 定稿：WebCrypto AES-GCM 加密，密钥不可导出并存 IndexedDB，密文存 `chrome.storage.local`，禁用 `storage.sync`。 | Architect | 已完成 |
 | 3 | 故事输入长度、单次生成限流、失败重试次数已由 Architect 定稿：10-5000 字、全局并发=1、瞬时错误最多自动重试 2 次。 | Architect | 已完成 |

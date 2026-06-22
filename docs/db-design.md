@@ -2,11 +2,28 @@
 
 ## 状态
 
-> **状态：** 待复审（已按 REVIEW-001 修订）  
+> **状态：** 已通过 REVIEW-001 复审（PO 已批准并合并至 develop）· REVIEW-002 文档复审补订（见 v3）  
 > **作者：** Architect Agent  
-> **最后更新：** 2026-06-17
+> **最后更新：** 2026-06-23
 >
 > **v2 修订（2026-06-17）：** 补充本地存储写入失败/配额处理（ARCH-LOW-001）与导出隐私边界（ARCH-LOW-002）。
+>
+> **v3 修订（2026-06-23，REVIEW-002 文档复审）：** Seed Data 的 `model` 明确默认空字符串（不硬编码模型名，对齐 ADR-4）。
+
+---
+
+## 任务标注 ↔ GitHub Issue 对照
+
+本文档中的 `TASK-XXX` 是逻辑任务 ID，对应仓库 GitHub Issue（任务的唯一事实源）。散文中的标注已就地附上 issue 链接；代码块内的标注 GitHub 不会自动链接，统一以下表为准：
+
+| 任务 | Issue | 任务 | Issue |
+|------|-------|------|-------|
+| TASK-001 / 002 | #2 | TASK-006 | #8 |
+| TASK-003 | #5 | TASK-007 | #9 |
+| TASK-004 | #6 | TASK-008 | #10 |
+| TASK-005 | #7 | TASK-009 | #11 |
+
+> 另：开发前置技术验证（Spike，ADR-5）见 #3。
 
 ---
 
@@ -36,10 +53,10 @@ StoryBoard AI 是 **纯客户端、无账号** 的 Chrome 插件（见 [architec
 
 | 存储键 | 内容 | 关联 TASK |
 |--------|------|-----------|
-| `settings` | `{ params: GenerationParams, provider: ProviderConfig, schemaVersion }` | TASK-002 |
-| `apiKeyCipher` | `{ ciphertext, iv, alg }`（API Key 的 AES-GCM 密文，**不含明文**） | TASK-002 / ADR-1 |
-| `draft` | `{ text, updatedAt }`（未提交故事草稿） | TASK-001 |
-| `currentProject` | `Project`（见下） | TASK-003/004/005/006/007/008 |
+| `settings` | `{ params: GenerationParams, provider: ProviderConfig, schemaVersion }` | TASK-002（#2） |
+| `apiKeyCipher` | `{ ciphertext, iv, alg }`（API Key 的 AES-GCM 密文，**不含明文**） | TASK-002（#2） / ADR-1 |
+| `draft` | `{ text, updatedAt }`（未提交故事草稿） | TASK-001（#2） |
+| `currentProject` | `Project`（见下） | TASK-003/004/005/006/007/008（#5、#6、#7、#8、#9、#10） |
 
 ### IndexedDB
 
@@ -51,7 +68,7 @@ StoryBoard AI 是 **纯客户端、无账号** 的 Chrome 插件（见 [architec
 
 ## 结构：`currentProject`
 
-> 字段名稳定，为未来「历史项目管理 / 导入」预留（TASK-008 要求 JSON 导出字段稳定）。
+> 字段名稳定，为未来「历史项目管理 / 导入」预留（TASK-008（#10） 要求 JSON 导出字段稳定）。
 
 ```jsonc
 {
@@ -81,9 +98,9 @@ StoryBoard AI 是 **纯客户端、无账号** 的 Chrome 插件（见 [architec
 ```
 
 **设计要点：**
-- 角色与镜头 **分离存储**，镜头通过 `characterRefs` 引用角色 id（TASK-005）。
-- `editedByUser` 保护用户手动编辑不被自动注入/再生成覆盖（TASK-005/006）。
-- 单镜头编辑只改对应 `shots[i]`，不动其他镜头（TASK-006）。
+- 角色与镜头 **分离存储**，镜头通过 `characterRefs` 引用角色 id（TASK-005，#7）。
+- `editedByUser` 保护用户手动编辑不被自动注入/再生成覆盖（TASK-005/006，#7、#8）。
+- 单镜头编辑只改对应 `shots[i]`，不动其他镜头（TASK-006，#8）。
 
 ---
 
@@ -120,6 +137,6 @@ StoryBoard AI 是 **纯客户端、无账号** 的 Chrome 插件（见 [architec
 ## 初始数据（Seed Data）
 
 无需 seed。首次安装时：
-- `settings` 用 `core/config.ts` 的默认参数初始化（默认模型名待 PO 确认，见 ADR-4）。
+- `settings` 用 `core/config.ts` 的默认参数初始化；**`model` 默认为空字符串**（不硬编码默认模型名，ADR-4），设置页可展示一个仅用于提示、不进入生成链路的推荐占位。
 - `apiKeyCipher` 为空，UI 引导用户在 BYOK 设置中配置 Key。
 - `currentProject` 为空，UI 展示空态。

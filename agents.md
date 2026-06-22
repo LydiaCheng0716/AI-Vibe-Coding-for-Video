@@ -2,6 +2,9 @@
 
 本文档说明 AI 软件工厂中每个 Agent 的角色定位、职责边界，以及它们之间的协作流程。
 
+> **任务的唯一事实源是 GitHub Issues。**
+> 任务不再以 `docs/tasks/TASK-XXX.md` 文件维护（该目录已废弃删除）。每个任务的描述、验收标准、依赖、状态、分支约定全部以仓库的 GitHub Issue 为准。PM Agent 负责创建/维护 Issue，Developer / QA Agent 直接读取对应 Issue 作为任务规格。`docs/` 下只保留 PRD、架构、API、数据库等**设计文档**。
+
 ---
 
 ## 角色总览
@@ -86,10 +89,10 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
 | 提示词文件 | `.agents/pm.md` |
 | 核心能力 | 需求结构化 |
 | 输入 | Human PO 的业务描述 |
-| 输出 | `docs/PRD.md` · `docs/tasks/TASK-XXX.md` |
+| 输出 | `docs/PRD.md` · 每个任务一个 **GitHub Issue**（含验收标准/依赖/分支） |
 | 不做的事 | 选技术栈 · 写代码 · 做架构决策 |
 
-**工作原则：** 每个用户故事必须有 Given/When/Then 格式的验收标准，开发才能开始。
+**工作原则：** 每个用户故事必须有 Given/When/Then 格式的验收标准，开发才能开始。任务以 GitHub Issue 形式落地，Issue 是任务的唯一事实源。
 
 ---
 
@@ -128,7 +131,7 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
 |------|------|
 | 提示词文件 | `.agents/developer.md` |
 | 核心能力 | 功能实现 |
-| 输入 | `docs/tasks/TASK-XXX.md` + 架构文档 |
+| 输入 | 对应 **GitHub Issue**（任务规格） + 架构文档 |
 | 输出 | feature 分支 + Pull Request + 单元测试 |
 | 不做的事 | 改架构 · 改 API 契约 · 合并自己的 PR |
 
@@ -168,9 +171,12 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
 
 | 项目 | 内容 |
 |------|------|
-| 职责 | CI/CD 配置 · Docker · GitHub Actions · 云端部署 |
-| 输出 | 部署报告 · Release Notes |
+| 提示词文件 | `.agents/deploy.md` |
+| 职责 | CI/CD 配置 · GitHub Actions · 产物打包（StoryBoard AI 为 Chrome 扩展 `.zip`，无云端服务部署）|
+| 输出 | CI 配置 · 部署/发布报告 · Release Notes |
 | 不做的事 | 写业务功能 · 做需求决策 |
+
+> 注：本产品是纯客户端 Chrome 扩展，**没有 Docker / 云端服务器部署**；Deploy Agent 的"部署"= CI 跑 lint+单测、打包可加载的扩展产物，以及（未来）Chrome Web Store 发布。
 
 ---
 
@@ -186,7 +192,7 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
         ├── 读取 PO 需求
         ├── 输出 Epic 列表
         ├── 拆解用户故事（含验收标准）
-        ├── 创建 TASK-XXX.md 文件
+        ├── 为每个任务创建 GitHub Issue（任务的唯一事实源）
         └── 提交 PRD 草稿 → PO 确认
 ```
 
@@ -216,7 +222,7 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
 
 ```
 步骤 7  Developer Agent（每个 TASK 独立 worktree）
-        ├── 阅读任务文档 + 架构文档
+        ├── 阅读对应 GitHub Issue + 架构文档
         ├── 创建 feature/task-XXX 分支
         ├── 实现功能 + 编写单元测试
         └── 提交 PR → develop
@@ -256,91 +262,66 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
 
 ## Git Worktree 布局与合并流程
 
-每个 agent 在**独立的 git worktree** 中工作，互不干扰，人工审阅后再合并回 `develop`。
+**分支模型：每个任务一条分支**（不是每个角色一条长期分支）。开发以 **GitHub Issue（`[TASK-XXX]`）** 为单位，一个任务一条 `feature/task-XXX-*` 分支、一个独立 worktree、一个 PR；多个任务可并行、互不干扰，人工审阅后合并回 `develop`。
 
 ### 分支与目录布局
 
 ```
-0612VibeCode/                          ← 主仓库（main 分支，仅生产发布）
-│   └── develop                        ← 集成分支（所有 agent 从此拉出）
+AI-Vibe-Coding-for-Video/              ← 主仓库（main 仅生产发布；develop 集成分支）
 │
-0612VibeCode-worktrees/                ← 同级目录，存放所有 agent worktree
-├── pm/                  → 分支 agent/pm
-├── architect/           → 分支 agent/architect
-├── architecture-reviewer/ → 分支 agent/architecture-reviewer
-├── developer/           → 分支 agent/developer
-├── reviewer/            → 分支 agent/reviewer
-├── qa/                  → 分支 agent/qa
-└── po-assistant/        → 分支 agent/po-assistant
+AI-Vibe-Coding-for-Video-worktrees/    ← 同级目录，存放各任务 worktree
+├── task-001/   → 分支 feature/task-001-sidebar-story-input
+├── task-003/   → 分支 feature/task-003-storyboard-generation
+└── task-00x/   → 分支 feature/task-00x-...
 ```
 
-| 分支 | Worktree 路径 | 对应角色 |
-|------|--------------|---------|
-| `main` | `0612VibeCode/` | 生产发布 |
-| `develop` | （主仓库切换） | 集成分支 |
-| `agent/pm` | `../0612VibeCode-worktrees/pm` | PM Agent |
-| `agent/architect` | `../0612VibeCode-worktrees/architect` | Architect Agent |
-| `agent/architecture-reviewer` | `../0612VibeCode-worktrees/architecture-reviewer` | 架构 Review Agent |
-| `agent/developer` | `../0612VibeCode-worktrees/developer` | Developer Agent |
-| `agent/reviewer` | `../0612VibeCode-worktrees/reviewer` | Code Review Agent |
-| `agent/qa` | `../0612VibeCode-worktrees/qa` | QA Agent |
-| `agent/po-assistant` | `../0612VibeCode-worktrees/po-assistant` | PO Assistant Agent |
+| 分支 | 用途 |
+|------|------|
+| `main` | 仅生产发布 |
+| `develop` | 集成分支（所有任务分支从此拉出、合回此处）|
+| `feature/task-XXX-标题` | 单个任务的开发分支，对应一个 Issue 和一个 PR |
 
-### 初始化命令（仅首次）
+> PM / Architect / 架构 Review 等产出**文档**的角色，同样从 `develop` 拉短期分支提交（如 `docs/pm-...`、`agent/architect`），经审阅后合回；不再为每个角色保留长期分支。
+
+### 初始化某个任务的 worktree
 
 ```bash
-# 在主仓库内执行
-git branch develop                                    # 创建集成分支
-WT=../0612VibeCode-worktrees && mkdir -p "$WT"
-for agent in pm architect architecture-reviewer developer reviewer qa po-assistant; do
-  git worktree add -b "agent/$agent" "$WT/$agent" develop
-done
-git worktree list                                     # 查看所有 worktree
+# 在主仓库内执行（以 TASK-003 为例）
+WT=../AI-Vibe-Coding-for-Video-worktrees
+git fetch origin && git worktree add -b feature/task-003-storyboard-generation \
+  "$WT/task-003" develop
+git worktree list
 ```
 
 ### 日常工作流程
 
 ```bash
-# 1. 进入某个 agent 的工作区（在 VS Code 中打开该目录）
-cd ../0612VibeCode-worktrees/developer
+# 1. 进入该任务工作区（在 VS Code 中打开该目录）
+cd ../AI-Vibe-Coding-for-Video-worktrees/task-003
 
-# 2. agent 在此分支上工作、提交
+# 2. 开发并提交（提交信息带上 Issue 号，便于关联）
 git add [具体文件]
-git commit -m "feat(TASK-XXX): 实现内容"
+git commit -m "feat(task-003): 实现分镜生成与解析 (#5)"
 
-# 3. 推送（如有远程仓库）或等待人工审阅
+# 3. 推送并开 PR → develop（由 Code Review + QA 通过、Human PO 批准后合并）
+git push -u origin feature/task-003-storyboard-generation
 ```
 
-### 人工审阅后合并
+### 同步最新 develop 到任务 worktree
 
 ```bash
-# 回到主仓库，切到 develop
-cd ../../0612VibeCode
-git checkout develop
-
-# 人工审阅通过后，合并对应 agent 分支
-git merge agent/developer
-
-# 累积若干功能、QA 通过后，由 Human PO 批准发布到 main
-git checkout main && git merge develop
-```
-
-### 同步最新 develop 到 agent worktree
-
-```bash
-# 在 agent worktree 内，拉取最新集成分支
-cd ../0612VibeCode-worktrees/developer
+cd ../AI-Vibe-Coding-for-Video-worktrees/task-003
 git merge develop          # 或 git rebase develop
 ```
 
-### 清理 worktree（任务完成后）
+### 清理 worktree（任务合并后）
 
 ```bash
-git worktree remove ../0612VibeCode-worktrees/developer   # 删除工作区
-git branch -d agent/developer                              # 删除分支（已合并）
+git worktree remove ../AI-Vibe-Coding-for-Video-worktrees/task-003
+git branch -d feature/task-003-storyboard-generation
 ```
 
-> **核心约束：** 所有合并到 `develop` / `main` 的操作必须经 Human PO 人工审阅确认；agent 之间不直接互相合并分支，统一通过 `develop` 集成。
+> **核心约束：** 合并到 `develop` / `main` 必须经 Human PO 人工审阅确认；任务分支之间不直接互相合并，统一通过 `develop` 集成。
 
 ---
 

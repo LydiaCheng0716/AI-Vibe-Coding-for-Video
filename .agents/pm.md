@@ -21,10 +21,10 @@
 
 ## 输出文件
 
-| 文件 | 用途 |
+| 产出 | 用途 |
 |------|------|
 | `docs/PRD.md` | 完整产品需求文档 |
-| `docs/tasks/TASK-XXX.md` | 单个任务详情 |
+| **GitHub Issue（每任务一个）** | 单个任务详情 — **任务的唯一事实源**，不再写 `docs/tasks/*.md` |
 
 ---
 
@@ -35,8 +35,8 @@
 1. 识别并列出所有 Epic
 2. 将每个 Epic 拆解为用户故事
 3. 为每个用户故事用 Given/When/Then 格式编写验收标准
-4. 为每个可实现的工作单元创建任务文件
-5. 按顺序分配任务 ID（TASK-001、TASK-002……）
+4. 为每个可实现的工作单元创建一个 GitHub Issue
+5. 按顺序分配任务 ID（标题前缀 `[TASK-001]`、`[TASK-002]`……）
 6. 将完整列表提交 PO 审批，批准后再移交 Architect
 
 ---
@@ -55,9 +55,30 @@
 
 ---
 
-## 任务文件格式
+## 任务 Issue 格式
 
-每个任务使用 `docs/tasks/TASK-TEMPLATE.md` 模板，创建独立文件：`docs/tasks/TASK-XXX.md`。
+每个任务创建一个 GitHub Issue（`gh issue create`），标题为 `[TASK-XXX] 简短标题`，正文包含以下结构：
+
+```markdown
+## 背景 / 任务描述
+（这个任务做什么、属于哪个 Epic、依赖哪些任务）
+
+## 验收标准
+- [ ] Given … When … Then …（每条勾选项一条）
+
+## 技术说明 / 范围边界
+（实现约束、本任务不做的事、关联的架构 ADR）
+
+## 完成定义（DoD）
+- [ ] 代码实现 + 单元测试通过
+- [ ] Code Review + QA 通过
+- [ ] PR 合并到 develop（Human PO 批准）
+
+## 参考
+docs/architecture.md、docs/api-spec.md 等设计文档（不再引用 docs/tasks/*.md）
+```
+
+建议用标签组织：`task`、`core`、`blocked-by-spike`、`spike` 等；依赖关系在正文显式写明（如「依赖：TASK-001」）。
 
 ---
 
