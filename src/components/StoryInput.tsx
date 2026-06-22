@@ -10,9 +10,14 @@ export default function StoryInput() {
 
   // 侧边栏重开时恢复草稿（TASK-001 验收）。
   useEffect(() => {
+    let alive = true;
     getDraft().then((d) => {
-      if (d) setText(d);
+      if (alive && d) setText(d);
     });
+    return () => {
+      alive = false;
+      if (timer.current) clearTimeout(timer.current);
+    };
   }, []);
 
   function onChange(value: string) {
@@ -26,7 +31,9 @@ export default function StoryInput() {
   }
 
   const validation = validateStory(text);
-  const liveMessage = storyValidationMessage(validation);
+  // 实时提示不对「空输入」报错（避免一打开就飘红）；空的拦截只在点生成时给。
+  const liveMessage =
+    validation.code === 'EMPTY_STORY' ? null : storyValidationMessage(validation);
   const isError = validation.code !== 'OK';
 
   function onGenerate() {
