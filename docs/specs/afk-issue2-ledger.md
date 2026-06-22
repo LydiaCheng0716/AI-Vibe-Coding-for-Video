@@ -26,5 +26,12 @@
 
 - 命令备忘：`npm run -s test`、`npm run -s build`、`npm run -s lint`(tsc)。
 
+- [2026-06-23 tick-2] TASK-001 实现完成：models/defaults/storage + UI（App/StoryInput）+ manifest/vite/tailwind；`npm build` 通过、单测 **18 个全过**。开 **PR #13**（leave-open）。cto 自评修订（空输入不飘红 + 卸载清理）。Codex 外门已跑（结果待 triage）。
+- **下一步（TASK-001 收尾）：**
+  1. triage Codex 外门发现 → 逐条修 → 回归 build+test。
+  2. 跑 **Kimi 终审**（skill/kimi-review）→ triage+修 → 回归。
+  3. TASK-001 完成（PR #13 leave-open 等审）。
+  4. 开 TASK-002 分支 `feature/task-002-byok-generation-settings`（off develop）：`core/crypto.ts`（AES-GCM extractable:false）+ `services/keyVault.ts`（saveApiKey/hasApiKey/getMaskedApiKey/getApiKeyForRequest/clearApiKey，ADR-1）+ `components/SettingsPanel.tsx`（Provider+参数）+ 单测（加解密往返、掩码、clear、明文不泄露）→ 三道门 → PR。
+
 ## 空闲计数
-- 连续空闲 tick：0（tick-1 有大量实质产出）
+- 连续空闲 tick：0（tick-2 有大量实质产出：PR #13）
