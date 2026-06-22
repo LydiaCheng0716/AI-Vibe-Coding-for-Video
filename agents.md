@@ -2,6 +2,9 @@
 
 本文档说明 AI 软件工厂中每个 Agent 的角色定位、职责边界，以及它们之间的协作流程。
 
+> **任务的唯一事实源是 GitHub Issues。**
+> 任务不再以 `docs/tasks/TASK-XXX.md` 文件维护（该目录已废弃删除）。每个任务的描述、验收标准、依赖、状态、分支约定全部以仓库的 GitHub Issue 为准。PM Agent 负责创建/维护 Issue，Developer / QA Agent 直接读取对应 Issue 作为任务规格。`docs/` 下只保留 PRD、架构、API、数据库等**设计文档**。
+
 ---
 
 ## 角色总览
@@ -86,10 +89,10 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
 | 提示词文件 | `.agents/pm.md` |
 | 核心能力 | 需求结构化 |
 | 输入 | Human PO 的业务描述 |
-| 输出 | `docs/PRD.md` · `docs/tasks/TASK-XXX.md` |
+| 输出 | `docs/PRD.md` · 每个任务一个 **GitHub Issue**（含验收标准/依赖/分支） |
 | 不做的事 | 选技术栈 · 写代码 · 做架构决策 |
 
-**工作原则：** 每个用户故事必须有 Given/When/Then 格式的验收标准，开发才能开始。
+**工作原则：** 每个用户故事必须有 Given/When/Then 格式的验收标准，开发才能开始。任务以 GitHub Issue 形式落地，Issue 是任务的唯一事实源。
 
 ---
 
@@ -128,7 +131,7 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
 |------|------|
 | 提示词文件 | `.agents/developer.md` |
 | 核心能力 | 功能实现 |
-| 输入 | `docs/tasks/TASK-XXX.md` + 架构文档 |
+| 输入 | 对应 **GitHub Issue**（任务规格） + 架构文档 |
 | 输出 | feature 分支 + Pull Request + 单元测试 |
 | 不做的事 | 改架构 · 改 API 契约 · 合并自己的 PR |
 
@@ -186,7 +189,7 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
         ├── 读取 PO 需求
         ├── 输出 Epic 列表
         ├── 拆解用户故事（含验收标准）
-        ├── 创建 TASK-XXX.md 文件
+        ├── 为每个任务创建 GitHub Issue（任务的唯一事实源）
         └── 提交 PRD 草稿 → PO 确认
 ```
 
@@ -216,7 +219,7 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
 
 ```
 步骤 7  Developer Agent（每个 TASK 独立 worktree）
-        ├── 阅读任务文档 + 架构文档
+        ├── 阅读对应 GitHub Issue + 架构文档
         ├── 创建 feature/task-XXX 分支
         ├── 实现功能 + 编写单元测试
         └── 提交 PR → develop

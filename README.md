@@ -8,6 +8,8 @@
 
 > AI Agent 负责高速执行，Human PO 负责所有关键决策。
 
+> **任务的唯一事实源是 GitHub Issues。** 每个任务的描述、验收标准、依赖和状态都以仓库 Issue 为准；`docs/tasks/*.md` 已废弃删除。`docs/` 下仅保留 PRD、架构、API、数据库等设计文档。
+
 ---
 
 ## 角色一览
@@ -32,7 +34,7 @@
 Human PO（提出需求）
     │
     ▼
-PM Agent → PRD.md + 任务列表
+PM Agent → PRD.md + GitHub Issues（每任务一个）
     │
     ▼
 Architect Agent → architecture.md + api-spec.md + db-design.md
@@ -72,9 +74,8 @@ project/
 │   ├── PRD.md                   # 产品需求文档
 │   ├── architecture.md          # 系统架构设计
 │   ├── api-spec.md              # API 接口规范
-│   ├── db-design.md             # 数据库设计
-│   └── tasks/                   # 任务详情（TASK-XXX.md）
-│
+│   └── db-design.md             # 数据库设计
+│                                # （任务详情见 GitHub Issues，非 docs/）
 ├── frontend/                    # 前端应用
 ├── backend/                     # 后端应用
 ├── tests/                       # E2E 和集成测试
@@ -107,7 +108,7 @@ main          ← 仅用于生产发布
 
 1. **Human PO** 用一段话描述产品目标
 2. 打开 **Terminal 1** → 加载 PM Agent：将 `.agents/pm.md` 作为上下文
-3. PM Agent 生成 `docs/PRD.md` 和 `docs/tasks/`
+3. PM Agent 生成 `docs/PRD.md`，并为每个任务创建一个 GitHub Issue（任务的唯一事实源）
 4. 打开 **Terminal 2** → 加载 Architect Agent：将 `.agents/architect.md` 作为上下文
 5. Architect 生成 `docs/architecture.md`、`docs/api-spec.md`、`docs/db-design.md`
 6. 打开 **Terminal 3** → 加载架构 Review Agent：将 `.agents/architecture-reviewer.md` 作为上下文

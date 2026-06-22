@@ -130,17 +130,20 @@ StoryBoard AI 面向短视频创作者、自媒体运营、营销人员，以及
 
 ## 任务列表
 
-| 任务 ID | 标题 | Epic | 依赖 | 负责人 | 状态 |
-|--------|------|------|------|--------|------|
-| TASK-001 | Chrome 侧边栏插件壳与故事输入 | EPIC-001 | 无 | Developer Agent | 待开始 |
-| TASK-002 | BYOK 设置与生成参数选择 | EPIC-002 | TASK-001 | Developer Agent | 待开始 |
-| TASK-003 | 分镜生成请求与结构化结果解析 | EPIC-003 | TASK-001, TASK-002 | Developer Agent | 待开始 |
-| TASK-004 | 视频提示词模板适配 | EPIC-003 / EPIC-004 | TASK-003 | Developer Agent | 待开始 |
-| TASK-005 | 角色识别与人物一致性注入 | EPIC-004 | TASK-003 | Developer Agent | 待开始 |
-| TASK-006 | 分镜卡片查看、编辑与单镜头复制 | EPIC-005 | TASK-003 | Developer Agent | 待开始 |
-| TASK-007 | BGM 提示词生成与复制 | EPIC-006 | TASK-003 | Developer Agent | 待开始 |
-| TASK-008 | Markdown、JSON、纯文本导出 | EPIC-005 | TASK-003 | Developer Agent | 待开始 |
-| TASK-009 | 生成失败、重试与加载状态 | EPIC-003 / EPIC-006 | TASK-003 | Developer Agent | 待开始 |
+> **任务详情、验收标准和状态以 GitHub Issues 为唯一事实源**（`docs/tasks/*.md` 已废弃删除）。下表仅为高层索引，依赖与状态请以 Issue 为准。
+
+| 任务 ID | 标题 | Epic | 依赖 | Issue |
+|--------|------|------|------|-------|
+| TASK-001 | Chrome 侧边栏插件壳与故事输入 | EPIC-001 | 无 | #2 |
+| TASK-002 | BYOK 设置与生成参数选择 | EPIC-002 | TASK-001 | #2 |
+| TASK-003 | 分镜生成请求与结构化结果解析 | EPIC-003 | TASK-001, TASK-002 | #5 |
+| TASK-004 | 视频提示词模板适配 | EPIC-003 / EPIC-004 | TASK-003 | #6 |
+| TASK-005 | 角色识别与人物一致性注入 | EPIC-004 | TASK-003 | #7 |
+| TASK-006 | 分镜卡片查看、编辑与单镜头复制 | EPIC-005 | TASK-003 | #8 |
+| TASK-007 | BGM 提示词生成与复制 | EPIC-006 | TASK-003 | #9 |
+| TASK-008 | Markdown、JSON、纯文本导出 | EPIC-005 | TASK-003 | #10 |
+| TASK-009 | 生成失败、重试与加载状态 | EPIC-003 / EPIC-006 | TASK-003 | #11 |
+| （前置）| Chrome 扩展真实环境 Provider 直连验证 | — | — | #3 (Spike) |
 
 ---
 
