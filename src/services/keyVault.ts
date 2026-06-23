@@ -13,13 +13,24 @@ function mask(last4: string): string {
   return '••••' + last4;
 }
 
+// 互斥锁：串行化所有「会动密钥/密文」的操作（保存/取用/删除），避免并发导致
+// 密文与 IndexedDB 密钥错配（Codex 外门 HIGH）。读操作（has/masked）无需加锁。
+let lock: Promise<unknown> = Promise.resolve();
+function withLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = lock.then(fn, fn);
+  lock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 async function readCipher(): Promise<StoredCipher | undefined> {
   const got = await chrome.storage.local.get(STORAGE_KEYS.apiKeyCipher);
   return got[STORAGE_KEYS.apiKeyCipher] as StoredCipher | undefined;
 }
 
-/** 加密保存（密文落 chrome.storage.local，密钥落 IndexedDB）。 */
-export async function saveApiKey(key: string): Promise<Result<void>> {
+async function doSave(key: string): Promise<Result<void>> {
   const trimmed = key.trim();
   if (!trimmed) return err('NO_API_KEY', '请输入有效的 API Key。');
   try {
@@ -30,6 +41,11 @@ export async function saveApiKey(key: string): Promise<Result<void>> {
   } catch {
     return err('STORAGE_WRITE_FAILED', '保存 API Key 失败，请重试。');
   }
+}
+
+/** 加密保存（密文落 chrome.storage.local，密钥落 IndexedDB）。 */
+export function saveApiKey(key: string): Promise<Result<void>> {
+  return withLock(() => doSave(key));
 }
 
 /** 是否已配置（不解密、不回显完整 Key）。 */
@@ -43,20 +59,7 @@ export async function getMaskedApiKey(): Promise<string | null> {
   return rec ? mask(rec.last4) : null;
 }
 
-/** 仅在发起出站请求的瞬间解密（非 UI 接口）。解密失败则清理坏状态并返回 null。 */
-export async function getApiKeyForRequest(): Promise<string | null> {
-  const rec = await readCipher();
-  if (!rec) return null;
-  try {
-    return await decryptString(rec);
-  } catch {
-    await clearApiKey(); // 密钥损坏/丢失：清坏状态，UI 引导重输（KEY_DECRYPT_FAILED）。
-    return null;
-  }
-}
-
-/** 一键删除（清密文 + IndexedDB 密钥）。 */
-export async function clearApiKey(): Promise<Result<void>> {
+async function doClear(): Promise<Result<void>> {
   try {
     await chrome.storage.local.remove(STORAGE_KEYS.apiKeyCipher);
     await deleteKey();
@@ -64,4 +67,25 @@ export async function clearApiKey(): Promise<Result<void>> {
   } catch {
     return err('STORAGE_WRITE_FAILED', '删除 API Key 失败，请重试。');
   }
+}
+
+async function doGetForRequest(): Promise<string | null> {
+  const rec = await readCipher();
+  if (!rec) return null;
+  try {
+    return await decryptString(rec);
+  } catch {
+    await doClear(); // 已在锁内，直接调用内部实现避免重入死锁。
+    return null;
+  }
+}
+
+/** 仅在发起出站请求的瞬间解密（非 UI 接口）。解密失败则清理坏状态并返回 null。 */
+export function getApiKeyForRequest(): Promise<string | null> {
+  return withLock(doGetForRequest);
+}
+
+/** 一键删除（清密文 + IndexedDB 密钥）。 */
+export function clearApiKey(): Promise<Result<void>> {
+  return withLock(doClear);
 }

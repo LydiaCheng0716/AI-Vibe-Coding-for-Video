@@ -70,6 +70,13 @@ describe('keyVault (BYOK / ADR-1)', () => {
     expect(await getApiKeyForRequest()).toBeNull();
   });
 
+  it('concurrent saves are serialized → ciphertext stays decryptable (Codex HIGH)', async () => {
+    // 并发两次保存不同 Key；互斥锁保证最终密文可被解出，且为其中一个完整 Key。
+    await Promise.all([saveApiKey('sk-AAAAAAAAAA1111'), saveApiKey('sk-BBBBBBBBBB2222')]);
+    const got = await getApiKeyForRequest();
+    expect(got === 'sk-AAAAAAAAAA1111' || got === 'sk-BBBBBBBBBB2222').toBe(true);
+  });
+
   it('decrypt failure (key wiped) clears bad state and returns null', async () => {
     await saveApiKey(KEY);
     // 模拟密钥丢失：删 IndexedDB 库但保留密文。

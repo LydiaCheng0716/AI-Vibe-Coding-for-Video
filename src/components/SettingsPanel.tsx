@@ -54,9 +54,14 @@ export default function SettingsPanel() {
   }
 
   async function onDeleteKey() {
-    await clearApiKey();
-    setMaskedKey(null);
-    setMsg('API Key 已删除。');
+    const r = await clearApiKey();
+    if (r.ok) {
+      setMaskedKey(null);
+      setMsg('API Key 已删除。');
+    } else {
+      // 删除失败时不能谎称已删：保留掩码并提示。
+      setMsg(r.error.message);
+    }
   }
 
   return (
