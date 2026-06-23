@@ -33,5 +33,8 @@
   3. TASK-001 完成（PR #13 leave-open 等审）。
   4. 开 TASK-002 分支 `feature/task-002-byok-generation-settings`（off develop）：`core/crypto.ts`（AES-GCM extractable:false）+ `services/keyVault.ts`（saveApiKey/hasApiKey/getMaskedApiKey/getApiKeyForRequest/clearApiKey，ADR-1）+ `components/SettingsPanel.tsx`（Provider+参数）+ 单测（加解密往返、掩码、clear、明文不泄露）→ 三道门 → PR。
 
+- [2026-06-23 tick-3] **TASK-001 三道门全过**：cto 自评(2)→Codex 外门(2，含防抖丢草稿真 bug)→Kimi 终审(2，竞态守卫+写失败提示)，全部修复，build+18 单测绿。PR #13 门禁结果已评论。**教训：门禁命令必须带硬超时 + 排除 package-lock.json**（首轮 Codex 卡死 6h）。
+- **下一步：** TASK-001 完成（PR #13 leave-open 等审）。开 TASK-002（见上）。
+
 ## 空闲计数
-- 连续空闲 tick：0（tick-2 有大量实质产出：PR #13）
+- 连续空闲 tick：0（tick-3：TASK-001 过三门）
