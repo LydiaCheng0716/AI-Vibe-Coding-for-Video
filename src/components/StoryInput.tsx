@@ -9,22 +9,29 @@ export default function StoryInput() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 保存最新输入，供卸载时 flush 未落盘的草稿（Codex 外门 MED：防抖窗口内关闭会丢输入）。
   const latest = useRef('');
+  // 用户是否已经输入过；避免草稿异步恢复覆盖用户已键入内容（Kimi 终审 MED：竞态）。
+  const hasTyped = useRef(false);
 
   // 侧边栏重开时恢复草稿（TASK-001 验收）。
   useEffect(() => {
     let alive = true;
-    getDraft().then((d) => {
-      if (alive && d) {
-        setText(d);
-        latest.current = d;
-      }
-    });
+    getDraft()
+      .then((d) => {
+        // 仅在用户尚未输入时恢复，避免覆盖已键入内容。
+        if (alive && d && !hasTyped.current) {
+          setText(d);
+          latest.current = d;
+        }
+      })
+      .catch(() => {
+        /* 读取草稿失败：忽略，从空白开始（不影响使用）。 */
+      });
     return () => {
       alive = false;
       // 卸载时若有未触发的防抖写入，立即 flush 最新文本，避免丢草稿。
       if (timer.current) {
         clearTimeout(timer.current);
-        void saveDraft(latest.current);
+        void saveDraft(latest.current); // 卸载后无法提示 UI，saveDraft 内部已吞错不会 reject。
       }
     };
   }, []);
@@ -32,11 +39,14 @@ export default function StoryInput() {
   function onChange(value: string) {
     setText(value);
     latest.current = value;
+    hasTyped.current = true;
     setNotice(null);
-    // 防抖写入草稿。
+    // 防抖写入草稿；写入失败时给用户提示（不静默丢数据，Kimi 终审 MED）。
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      void saveDraft(value);
+      saveDraft(value).then((r) => {
+        if (!r.ok) setNotice(r.error.message);
+      });
     }, DRAFT_DEBOUNCE_MS);
   }
 
