@@ -7,21 +7,31 @@ export default function StoryInput() {
   const [text, setText] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 保存最新输入，供卸载时 flush 未落盘的草稿（Codex 外门 MED：防抖窗口内关闭会丢输入）。
+  const latest = useRef('');
 
   // 侧边栏重开时恢复草稿（TASK-001 验收）。
   useEffect(() => {
     let alive = true;
     getDraft().then((d) => {
-      if (alive && d) setText(d);
+      if (alive && d) {
+        setText(d);
+        latest.current = d;
+      }
     });
     return () => {
       alive = false;
-      if (timer.current) clearTimeout(timer.current);
+      // 卸载时若有未触发的防抖写入，立即 flush 最新文本，避免丢草稿。
+      if (timer.current) {
+        clearTimeout(timer.current);
+        void saveDraft(latest.current);
+      }
     };
   }, []);
 
   function onChange(value: string) {
     setText(value);
+    latest.current = value;
     setNotice(null);
     // 防抖写入草稿。
     if (timer.current) clearTimeout(timer.current);

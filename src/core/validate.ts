@@ -19,10 +19,8 @@ export interface StoryValidation {
  * 例：'👍'.length === 2，但 codePointLength('👍') === 1。
  */
 export function codePointLength(text: string): number {
-  // 展开迭代器即按码点切分。
-  let n = 0;
-  for (const _ of text) n++;
-  return n;
+  // Array.from 按码点迭代字符串（emoji/代理对算 1）。
+  return Array.from(text).length;
 }
 
 /** 校验故事输入（ADR-2）。纯函数，无副作用。 */
