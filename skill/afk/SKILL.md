@@ -59,6 +59,33 @@ single final pass; CLI gates self-skip cleanly if not installed / not logged in
 review alone and note it) → merge per policy. The design doc is more important
 than the code.
 
+## Running CLI review gates safely (hard-won — never skip)
+
+External CLI gates (`codex exec`, `kimi -p`) run unattended, so a hung gate silently
+stalls the whole pipeline. A real run once lost **6 hours** to a Codex gate that hung
+on a fat diff with no deadline. Always:
+
+1. **Hard timeout + watchdog on every gate.** Never invoke a CLI gate without a kill
+   deadline. macOS has no `timeout(1)` by default — use the harness Bash `timeout`
+   parameter, or a background watchdog:
+   `( for i in $(seq 1 60); do pgrep -f 'codex exec' >/dev/null || exit 0; sleep 5; done; pkill -f 'codex exec' ) &`
+   Budget ~300s. If a gate is killed by the watchdog twice, treat it as **unavailable**:
+   record `external gate timed out` and fall back per the Driver variant (or proceed on
+   CTO review alone) — never block the queue waiting on it.
+2. **Never feed the gate the whole diff.** Exclude lockfiles / generated files; review
+   source only:
+   `git diff <base>...HEAD -- src tests ':(exclude)package-lock.json' ':(exclude)*.lock' > /tmp/gate.diff`
+   A 5k-line lockfile is what hung Codex.
+3. **Mind the invocation, or it waits on stdin.** Passing a huge diff as an inline shell
+   arg can make `codex exec` fall back to *"Reading additional input from stdin…"* and
+   hang forever. Prefer piping via stdin (`printf '%s' "$PROMPT" | codex exec --sandbox read-only -`)
+   or referencing a diff *file* in a short prompt, and tell the model **"do not wait for
+   stdin; produce the review now."** `kimi -p "<prompt>"` is non-interactive; keep gates
+   read-only (`--sandbox read-only` for Codex).
+4. **Health-check first when a gate flaked.** A bounded one-liner
+   (`codex exec --sandbox read-only "Reply CODEX_OK"`) confirms the CLI is alive before
+   committing to a long review.
+
 ## Autonomy
 
 Decide with best-practice defaults and record each decision; don't block on
