@@ -24,18 +24,17 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-function tx<T>(store: IDBObjectStore, req: IDBRequest<T>): Promise<T> {
+function reqToPromise<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
-    void store;
   });
 }
 
 async function idbGet(key: string): Promise<CryptoKey | undefined> {
   const db = await openDb();
   const store = db.transaction(KEY_DB.store, 'readonly').objectStore(KEY_DB.store);
-  const out = await tx<CryptoKey | undefined>(store, store.get(key));
+  const out = await reqToPromise<CryptoKey | undefined>(store.get(key));
   db.close();
   return out;
 }
@@ -43,14 +42,14 @@ async function idbGet(key: string): Promise<CryptoKey | undefined> {
 async function idbPut(key: string, value: CryptoKey): Promise<void> {
   const db = await openDb();
   const store = db.transaction(KEY_DB.store, 'readwrite').objectStore(KEY_DB.store);
-  await tx(store, store.put(value, key));
+  await reqToPromise(store.put(value, key));
   db.close();
 }
 
 async function idbDelete(key: string): Promise<void> {
   const db = await openDb();
   const store = db.transaction(KEY_DB.store, 'readwrite').objectStore(KEY_DB.store);
-  await tx(store, store.delete(key));
+  await reqToPromise(store.delete(key));
   db.close();
 }
 
