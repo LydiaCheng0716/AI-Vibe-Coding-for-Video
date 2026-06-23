@@ -1,6 +1,12 @@
-// Vitest 全局 setup：提供 fake-indexeddb 与最小 chrome.storage.local mock，
+// Vitest 全局 setup：提供 fake-indexeddb、WebCrypto 与最小 chrome.storage.local mock，
 // 供 keyVault / storage 纯逻辑单测使用（无需真实浏览器）。
 import 'fake-indexeddb/auto';
+import { webcrypto } from 'node:crypto';
+
+// jsdom 环境可能不带 crypto.subtle；用 Node WebCrypto 兜底（getRandomValues + subtle）。
+if (!(globalThis.crypto && 'subtle' in globalThis.crypto)) {
+  Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
+}
 
 type StoreData = Record<string, unknown>;
 const mem: StoreData = {};
@@ -28,8 +34,15 @@ const local = {
 // @ts-expect-error - 测试环境注入最小 chrome 形状
 globalThis.chrome = { storage: { local } };
 
-// 每个测试间清空内存存储，避免串扰。
+// 每个测试间清空内存存储 + IndexedDB，避免跨测试串扰（Kimi 终审 MED）。
 import { beforeEach } from 'vitest';
+import { KEY_DB } from '../src/core/config';
 beforeEach(async () => {
   await local.clear();
+  await new Promise<void>((resolve) => {
+    const req = indexedDB.deleteDatabase(KEY_DB.name);
+    req.onsuccess = () => resolve();
+    req.onerror = () => resolve();
+    req.onblocked = () => resolve();
+  });
 });
