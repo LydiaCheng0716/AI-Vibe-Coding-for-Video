@@ -33,6 +33,8 @@ async function readCipher(): Promise<StoredCipher | undefined> {
 async function doSave(key: string): Promise<Result<void>> {
   const trimmed = key.trim();
   if (!trimmed) return err('NO_API_KEY', '请输入有效的 API Key。');
+  // 过短的 Key 会让 last4 等于完整明文，违反 ADR-1「只暴露末 4 位」；真实 LLM Key 远长于此。
+  if (trimmed.length < 8) return err('NO_API_KEY', 'API Key 太短，请检查是否粘贴完整。');
   try {
     const rec = await encryptString(trimmed);
     const stored: StoredCipher = { ...rec, last4: trimmed.slice(-4) };

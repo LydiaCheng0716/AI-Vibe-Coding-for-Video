@@ -18,10 +18,14 @@ export default function SettingsPanel() {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [s, m] = await Promise.all([getSettings(), getMaskedApiKey()]);
-      if (alive) {
-        setSettings(s);
-        setMaskedKey(m);
+      try {
+        const [s, m] = await Promise.all([getSettings(), getMaskedApiKey()]);
+        if (alive) {
+          setSettings(s);
+          setMaskedKey(m);
+        }
+      } catch {
+        if (alive) setMsg('加载设置失败，请重试。');
       }
     })();
     return () => {

@@ -25,6 +25,12 @@ describe('keyVault (BYOK / ADR-1)', () => {
     if (!r.ok) expect(r.error.code).toBe('NO_API_KEY');
   });
 
+  it('too-short key is rejected (avoids last4 == full key, ADR-1)', async () => {
+    const r = await saveApiKey('abc');
+    expect(r.ok).toBe(false);
+    expect(await hasApiKey()).toBe(false);
+  });
+
   it('mask shows only the last 4 chars, never the full key', async () => {
     await saveApiKey(KEY);
     const masked = await getMaskedApiKey();

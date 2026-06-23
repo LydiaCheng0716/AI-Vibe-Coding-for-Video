@@ -31,25 +31,38 @@ function reqToPromise<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
+// 等事务真正提交（oncomplete）再关库，避免请求 onsuccess 后过早 close 导致写未落盘
+// （Kimi 终审 HIGH）。
+function txDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
 async function idbGet(key: string): Promise<CryptoKey | undefined> {
   const db = await openDb();
-  const store = db.transaction(KEY_DB.store, 'readonly').objectStore(KEY_DB.store);
-  const out = await reqToPromise<CryptoKey | undefined>(store.get(key));
+  const tx = db.transaction(KEY_DB.store, 'readonly');
+  const out = await reqToPromise<CryptoKey | undefined>(tx.objectStore(KEY_DB.store).get(key));
+  await txDone(tx);
   db.close();
   return out;
 }
 
 async function idbPut(key: string, value: CryptoKey): Promise<void> {
   const db = await openDb();
-  const store = db.transaction(KEY_DB.store, 'readwrite').objectStore(KEY_DB.store);
-  await reqToPromise(store.put(value, key));
+  const tx = db.transaction(KEY_DB.store, 'readwrite');
+  tx.objectStore(KEY_DB.store).put(value, key);
+  await txDone(tx);
   db.close();
 }
 
 async function idbDelete(key: string): Promise<void> {
   const db = await openDb();
-  const store = db.transaction(KEY_DB.store, 'readwrite').objectStore(KEY_DB.store);
-  await reqToPromise(store.delete(key));
+  const tx = db.transaction(KEY_DB.store, 'readwrite');
+  tx.objectStore(KEY_DB.store).delete(key);
+  await txDone(tx);
   db.close();
 }
 
@@ -71,8 +84,21 @@ function fromB64(b64: string): Uint8Array {
 
 // ---- 密钥与加解密 ----
 
-/** 取得（或首次生成）不可导出的 AES-GCM 密钥。 */
-async function getOrCreateKey(): Promise<CryptoKey> {
+// 串行化「读无→生成→写入」，防止并发各自生成不同密钥导致旧密文不可解（Codex/Kimi HIGH）。
+// crypto 层自带保护，不依赖调用方锁；每次重读 IndexedDB、不缓存内存密钥，
+// 以便外部删除/损坏后能正确表现为「需重新生成」。
+let keyChain: Promise<unknown> = Promise.resolve();
+
+function getOrCreateKey(): Promise<CryptoKey> {
+  const run = keyChain.then(loadOrCreateKey);
+  keyChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function loadOrCreateKey(): Promise<CryptoKey> {
   const existing = await idbGet(KEY_DB.id);
   if (existing) return existing;
   const key = await crypto.subtle.generateKey(

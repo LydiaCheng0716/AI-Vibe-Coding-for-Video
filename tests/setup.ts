@@ -34,8 +34,15 @@ const local = {
 // @ts-expect-error - 测试环境注入最小 chrome 形状
 globalThis.chrome = { storage: { local } };
 
-// 每个测试间清空内存存储，避免串扰。
+// 每个测试间清空内存存储 + IndexedDB，避免跨测试串扰（Kimi 终审 MED）。
 import { beforeEach } from 'vitest';
+import { KEY_DB } from '../src/core/config';
 beforeEach(async () => {
   await local.clear();
+  await new Promise<void>((resolve) => {
+    const req = indexedDB.deleteDatabase(KEY_DB.name);
+    req.onsuccess = () => resolve();
+    req.onerror = () => resolve();
+    req.onblocked = () => resolve();
+  });
 });
