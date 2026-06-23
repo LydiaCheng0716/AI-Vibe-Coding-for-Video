@@ -39,5 +39,9 @@
 - [2026-06-23 tick-4] PR #13 已合并到 develop（操作员授权）。开 TASK-002 分支。实现 `core/crypto.ts`（AES-GCM extractable:false 存 IndexedDB）+ `services/keyVault.ts` + `components/SettingsPanel.tsx` + App 设置切换；**keyVault 单测 7 个**（往返/掩码/不可导出/无明文/清理/解密失败恢复）；build+25 单测绿。cto 自评（去未用参数）。开 **PR #14**（leave-open）。Codex 外门进行中（带 300s 看门狗）。
 - **下一步：** triage Codex #14 → 修 → Kimi 终审 → 修 → TASK-002 完成。两个 PR（#13 已合并、#14 leave-open）→ **队列完成 → 删 cron 2c454dd1 + 终报**。
 
+- [2026-06-23 tick-5] TASK-002 三道门全过：cto(1)→Codex(2，密钥互斥锁 HIGH)→Kimi(6，crypto 串行化/事务提交/短Key/测试隔离)，全部修复，build+27 单测绿。PR #14 门禁结果已评论。
+- **队列完成**：TASK-001=PR #13（已合并），TASK-002=PR #14（leave-open，过三门，等审）。**删除 cron 2c454dd1，结束 AFK，发终报。**
+
+## 状态：✅ 队列完成，AFK 结束（cron 已删）
 ## 空闲计数
-- 连续空闲 tick：0（tick-4：TASK-002 + PR #14）
+- 连续空闲 tick：0
