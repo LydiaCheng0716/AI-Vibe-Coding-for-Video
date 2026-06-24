@@ -34,9 +34,21 @@ export default function ShotCard({ shot, onSaved }: Props) {
     setNotice(null);
   }
 
+  function onEdit() {
+    // 进入编辑时以当前 shot.prompt 重置草稿，避免 shot prop 外部变更后展示旧草稿（kimi MED）。
+    setDraft(shot.prompt);
+    setNotice(null);
+    setEditing(true);
+  }
+
   async function onCopy() {
     const r = await copyToClipboard(shot.prompt);
-    setNotice(r.ok ? '已复制到剪贴板' : r.error.message);
+    if (r.ok) {
+      setNotice('已复制到剪贴板');
+      window.setTimeout(() => setNotice((n) => (n === '已复制到剪贴板' ? null : n)), 2000);
+    } else {
+      setNotice(r.error.message);
+    }
   }
 
   return (
@@ -51,11 +63,7 @@ export default function ShotCard({ shot, onSaved }: Props) {
             复制
           </button>
           {!editing && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="text-xs text-blue-600 hover:underline"
-            >
+            <button type="button" onClick={onEdit} className="text-xs text-blue-600 hover:underline">
               编辑
             </button>
           )}

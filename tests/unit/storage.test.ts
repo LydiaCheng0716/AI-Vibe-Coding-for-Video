@@ -120,4 +120,14 @@ describe('storage: updateShotPrompt (TASK-006)', () => {
     if (!r.ok) expect(r.error.code).toBe('STORAGE_WRITE_FAILED');
     spy.mockRestore();
   });
+
+  it('并发更新不同镜头不互相覆盖（kimi HIGH：RMW 串行锁）', async () => {
+    await saveCurrentProject(mkProject());
+    // 同时发起对 s1 与 s3 的更新；串行锁保证两次 RMW 都生效。
+    await Promise.all([updateShotPrompt('s1', 'A'), updateShotPrompt('s3', 'C')]);
+    const p = await getCurrentProject();
+    expect(p?.shots[0]).toMatchObject({ prompt: 'A', editedByUser: true });
+    expect(p?.shots[2]).toMatchObject({ prompt: 'C', editedByUser: true });
+    expect(p?.shots[1]).toMatchObject({ prompt: 'prompt-s2', editedByUser: false });
+  });
 });

@@ -66,6 +66,7 @@ export default function StoryInput({ onGenerated, busy }: Props) {
   const isError = validation.code !== 'OK';
 
   async function onGenerate() {
+    if (busy) return; // 兜底：busy 时不提交（按钮已 disabled，双保险）
     const v = validateStory(text);
     if (v.code !== 'OK') {
       // 阻止提交并提示（TASK-001 验收）。

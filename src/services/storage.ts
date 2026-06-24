@@ -71,25 +71,41 @@ export async function getCurrentProject(): Promise<Project | null> {
   return p ?? null;
 }
 
+// 串行化所有对 currentProject 的「读-改-写」与整写，避免并发保存互相覆盖（kimi HIGH：RMW 竞态）。
+// 读操作（getCurrentProject）无需加锁。
+let projectChain: Promise<unknown> = Promise.resolve();
+function withProjectLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = projectChain.then(fn, fn);
+  projectChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+function doSaveProject(project: Project): Promise<Result<void>> {
+  return write({ [STORAGE_KEYS.currentProject]: { ...project, schemaVersion: SCHEMA_VERSION } });
+}
+
 export async function saveCurrentProject(project: Project): Promise<Result<void>> {
-  return write({
-    [STORAGE_KEYS.currentProject]: { ...project, schemaVersion: SCHEMA_VERSION },
-  });
+  return withProjectLock(() => doSaveProject(project));
 }
 
 /**
  * 局部更新单个镜头提示词：仅改该镜头并置 editedByUser=true，其余镜头不变（api-spec §3.2 / TASK-006）。
- * 无当前项目或无匹配 shotId → 返回 ok（无副作用，不误改）。
+ * 无当前项目或无匹配 shotId → 返回 ok（无副作用，不误改）。整个 RMW 在锁内串行，防并发覆盖。
  */
 export async function updateShotPrompt(shotId: string, prompt: string): Promise<Result<void>> {
-  const project = await getCurrentProject();
-  if (!project) return ok(undefined);
-  let hit = false;
-  const shots = project.shots.map((s) => {
-    if (s.id !== shotId) return s;
-    hit = true;
-    return { ...s, prompt, editedByUser: true };
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return ok(undefined);
+    let hit = false;
+    const shots = project.shots.map((s) => {
+      if (s.id !== shotId) return s;
+      hit = true;
+      return { ...s, prompt, editedByUser: true };
+    });
+    if (!hit) return ok(undefined);
+    return doSaveProject({ ...project, shots });
   });
-  if (!hit) return ok(undefined);
-  return saveCurrentProject({ ...project, shots });
 }
