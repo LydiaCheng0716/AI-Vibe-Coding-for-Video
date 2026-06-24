@@ -4,6 +4,7 @@
 import type { GenerationParams } from '../core/models';
 import { SHOTS_MIN, SHOTS_MAX } from '../core/parse';
 import { resolveTemplate } from './templates';
+import { clampField } from './sanitize';
 
 export interface PromptPair {
   system: string;
@@ -45,8 +46,8 @@ export function buildStoryboardPrompt(story: string, params: GenerationParams): 
     '',
     '生成参数：',
     `- 目标视频模型：${params.videoModel}`,
-    `- 画面风格：${params.style || '（未指定，由你按故事氛围决定）'}`,
-    `- 画幅比例：${params.aspectRatio}`,
+    `- 画面风格：${clampField(params.style) || '（未指定，由你按故事氛围决定）'}`,
+    `- 画幅比例：${clampField(params.aspectRatio, 20)}`,
     `- 单镜头时长偏好：${params.shotDurationPref}`,
     `- 输出语言：${lang}`,
   ].join('\n');
