@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { validateStory, storyValidationMessage } from '../core/validate';
 import { STORY_MAX, DRAFT_DEBOUNCE_MS } from '../core/config';
-import { saveDraft, getDraft } from '../services/storage';
+import { saveDraft, getDraft, getSettings } from '../services/storage';
 import { generateStoryboard } from '../services/generation';
 import type { Project } from '../core/models';
 
@@ -15,11 +15,29 @@ interface Props {
 export default function StoryInput({ onGenerated, busy }: Props) {
   const [text, setText] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
+  // 不保存 Key 模式（ADR-1 #8）：persist=false 时本地不落盘，生成当次手动输入一次性 Key。
+  const [persistKey, setPersistKey] = useState(true);
+  const [tempKey, setTempKey] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 保存最新输入，供卸载时 flush 未落盘的草稿（Codex 外门 MED：防抖窗口内关闭会丢输入）。
   const latest = useRef('');
   // 用户是否已经输入过；避免草稿异步恢复覆盖用户已键入内容（Kimi 终审 MED：竞态）。
   const hasTyped = useRef(false);
+
+  // 读取「是否保存 Key」设置，决定是否显示一次性 Key 输入。
+  useEffect(() => {
+    let on = true;
+    getSettings()
+      .then((s) => {
+        if (on) setPersistKey(s.persistApiKey);
+      })
+      .catch(() => {
+        /* 读取失败按默认保存模式 */
+      });
+    return () => {
+      on = false;
+    };
+  }, []);
 
   // 侧边栏重开时恢复草稿（TASK-001 验收）。
   useEffect(() => {
@@ -73,8 +91,16 @@ export default function StoryInput({ onGenerated, busy }: Props) {
       setNotice(storyValidationMessage(v));
       return;
     }
+    if (!persistKey && !tempKey.trim()) {
+      setNotice('请先输入本次使用的 API Key（已关闭保存）。');
+      return;
+    }
     setNotice('正在生成分镜…');
-    const r = await generateStoryboard({ story: text });
+    const r = await generateStoryboard({
+      story: text,
+      ...(persistKey ? {} : { apiKey: tempKey }),
+    });
+    if (!persistKey) setTempKey(''); // 一次性 Key 用完即弃，不保留
     if (r.ok) {
       setNotice(null);
       onGenerated(r.data);
@@ -104,6 +130,16 @@ export default function StoryInput({ onGenerated, busy }: Props) {
           <span className={isError ? 'text-red-600' : 'text-amber-600'}>{liveMessage}</span>
         )}
       </div>
+      {!persistKey && (
+        <input
+          type="password"
+          autoComplete="off"
+          className="w-full rounded border border-amber-300 p-2 text-sm outline-none focus:border-amber-500"
+          placeholder="本次使用的 API Key（已关闭保存，不落盘）"
+          value={tempKey}
+          onChange={(e) => setTempKey(e.target.value)}
+        />
+      )}
       <button
         type="button"
         onClick={onGenerate}

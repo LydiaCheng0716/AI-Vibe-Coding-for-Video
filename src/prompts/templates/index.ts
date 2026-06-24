@@ -12,10 +12,16 @@ export interface PromptTemplate {
 /** 默认回退模板（通用英文电影感）。 */
 export const FALLBACK_TEMPLATE = cinematicEn;
 
+// Record<TemplateId, ...> 在编译期强制注册表覆盖每个 TemplateId（漏注册即编译错误）——
+// 这是「新增模板必须注册」的穷尽保证。不把 TemplateId 反推为 keyof typeof REGISTRY，
+// 以免 core/models 依赖 prompts/templates、破坏分层并丢失该检查（Kimi LOW 评估结论）。
 const REGISTRY: Record<TemplateId, PromptTemplate> = {
   'cinematic-en': cinematicEn,
   'jimeng-keling-zh': jimengKelingZh,
 };
+
+/** 所有已注册模板 id（运行时枚举用）。 */
+export const TEMPLATE_IDS = Object.keys(REGISTRY) as TemplateId[];
 
 /**
  * 按 params.templateId 解析模板；无法识别 → 回退通用模板并记录可排查状态（不抛错、不静默）。

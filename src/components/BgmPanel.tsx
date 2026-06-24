@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Project, BgmPrompt } from '../core/models';
 import { generateBgmPrompt } from '../services/generation';
-import { updateCurrentProjectBgm } from '../services/storage';
+import { updateCurrentProjectBgm, getSettings } from '../services/storage';
 import { copyToClipboard } from '../services/clipboard';
 
 interface Props {
@@ -14,17 +14,37 @@ interface Props {
 
 export default function BgmPanel({ project, busy, onBgmGenerated }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
+  const [persistKey, setPersistKey] = useState(true);
+  const [tempKey, setTempKey] = useState('');
   const bgm = project?.bgm ?? null;
+
+  useEffect(() => {
+    let on = true;
+    getSettings()
+      .then((s) => {
+        if (on) setPersistKey(s.persistApiKey);
+      })
+      .catch(() => {});
+    return () => {
+      on = false;
+    };
+  }, []);
 
   async function onGenerate() {
     if (busy) return;
+    if (!persistKey && !tempKey.trim()) {
+      setNotice('请先输入本次使用的 API Key（已关闭保存）。');
+      return;
+    }
     const language = project?.params.outputLanguage ?? 'zh';
     setNotice('正在生成 BGM 提示词…');
     const r = await generateBgmPrompt({
       story: project?.story,
       project: project ?? undefined,
       language,
+      ...(persistKey ? {} : { apiKey: tempKey }),
     });
+    if (!persistKey) setTempKey('');
     if (!r.ok) {
       setNotice(r.error.message);
       return;
@@ -66,6 +86,16 @@ export default function BgmPanel({ project, busy, onBgmGenerated }: Props) {
           </button>
         </div>
       </div>
+      {!persistKey && (
+        <input
+          type="password"
+          autoComplete="off"
+          className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
+          placeholder="本次使用的 API Key（已关闭保存，不落盘）"
+          value={tempKey}
+          onChange={(e) => setTempKey(e.target.value)}
+        />
+      )}
       {bgm && (
         <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs text-gray-800">
           {bgm.prompt}

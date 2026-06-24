@@ -163,6 +163,29 @@ describe('generateStoryboard: 成功与出站失败', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it('apiKey override（不保存模式）→ 用 override、不调 keyVault', async () => {
+    const complete = vi.fn().mockResolvedValue(goodShots());
+    const hasApiKey = vi.fn().mockResolvedValue(false); // 没落盘也能生成
+    const getKey = vi.fn();
+    const deps = makeDeps({
+      hasApiKey,
+      getApiKeyForRequest: getKey,
+      createProvider: vi.fn().mockReturnValue({ complete }),
+    });
+    const r = await generateStoryboard({ story: STORY, apiKey: 'sk-once-typed' }, deps);
+    expect(r.ok).toBe(true);
+    expect(getKey).not.toHaveBeenCalled();
+    expect(hasApiKey).not.toHaveBeenCalled();
+    expect(complete.mock.calls[0][0]).toMatchObject({ apiKey: 'sk-once-typed' });
+  });
+
+  it('空 override → 回退 keyVault 路径', async () => {
+    const getKey = vi.fn().mockResolvedValue('sk-stored');
+    const deps = makeDeps({ getApiKeyForRequest: getKey });
+    await generateStoryboard({ story: STORY, apiKey: '   ' }, deps);
+    expect(getKey).toHaveBeenCalledTimes(1);
+  });
+
   it('apiKey 解密一次并透传给 provider（不二次解密）', async () => {
     const complete = vi.fn().mockResolvedValue(goodShots());
     const getKey = vi.fn().mockResolvedValue('sk-once');

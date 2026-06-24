@@ -59,6 +59,11 @@ export default function SettingsPanel() {
         }
       }
     }
+    // 关闭「保存 Key」→ 清掉已落盘的 Key，确保磁盘无残留（ADR-1 #8）。
+    if (!settings.persistApiKey && maskedKey) {
+      await clearApiKey();
+      setMaskedKey(null);
+    }
     const r = await saveSettings(next);
     if (next !== settings) setSettings(next);
     if (!r.ok) setMsg(r.error.message);
@@ -127,9 +132,19 @@ export default function SettingsPanel() {
           />
         </label>
 
-        <label className="text-xs">
-          API Key
-          <div className="mt-1 flex gap-1">
+        <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={settings.persistApiKey}
+            onChange={(e) => setSettings((s) => ({ ...s, persistApiKey: e.target.checked }))}
+          />
+          在本机加密保存 API Key（关闭则每次生成时手动输入，不落盘）
+        </label>
+
+        {settings.persistApiKey ? (
+          <label className="text-xs">
+            API Key
+            <div className="mt-1 flex gap-1">
             <input
               type="password"
               autoComplete="off"
@@ -155,7 +170,12 @@ export default function SettingsPanel() {
               </button>
             )}
           </div>
-        </label>
+          </label>
+        ) : (
+          <p className="text-[11px] leading-snug text-amber-700">
+            已关闭保存：API Key 不会落盘，每次生成时在生成区临时输入，用完即弃。
+          </p>
+        )}
         <p className="text-[11px] leading-snug text-gray-500">
           你的 API Key 已在本机加密保存，只用于直接调用 AI 服务。本地加密能降低硬盘被读取时的泄露风险，
           但无法防护已被恶意软件控制的浏览器或设备——请只在你信任的电脑上保存 Key。

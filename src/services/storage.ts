@@ -56,6 +56,7 @@ export async function getSettings(): Promise<Settings> {
   return {
     params: { ...base.params, ...stored.params },
     provider: { ...base.provider, ...stored.provider },
+    persistApiKey: stored.persistApiKey ?? base.persistApiKey,
     schemaVersion: stored.schemaVersion ?? SCHEMA_VERSION,
   };
 }
