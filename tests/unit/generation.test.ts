@@ -139,6 +139,23 @@ describe('generateStoryboard: 成功与出站失败', () => {
     if (!r.ok) expect(r.error.code).toBe('BAD_RESPONSE_FORMAT');
   });
 
+  it('成功生成的项目注入了人物一致性（TASK-005 接线）', async () => {
+    const withChar = JSON.stringify({
+      characters: [{ name: '小红', appearance: '扎马尾的女孩' }],
+      shots: [
+        { summary: '1', shotSize: '近景', cameraMovement: '推', durationSuggestion: '2s', prompt: 'p1', characterRefs: ['小红'] },
+        { summary: '2', shotSize: '中景', cameraMovement: '摇', durationSuggestion: '2s', prompt: 'p2' },
+        { summary: '3', shotSize: '远景', cameraMovement: '固定', durationSuggestion: '2s', prompt: 'p3' },
+      ],
+    });
+    const deps = makeDeps({
+      createProvider: vi.fn().mockReturnValue({ complete: vi.fn().mockResolvedValue(withChar) }),
+    });
+    const r = await generateStoryboard({ story: STORY }, deps);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.shots[0].prompt).toContain('扎马尾的女孩');
+  });
+
   it('generateStoryboardAttempt 成功但【不落库】（009 重试接缝）', async () => {
     const save = vi.fn().mockResolvedValue(ok(undefined));
     const r = await generateStoryboardAttempt({ story: STORY }, makeDeps({ saveCurrentProject: save }));
