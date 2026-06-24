@@ -74,6 +74,26 @@ describe('injectCharacterConsistency', () => {
     const out = injectCharacterConsistency(project([xiaoming], [shot({ characterRefs: ['c999'] })]));
     expect(out.shots[0].prompt).toBe('一个镜头的提示词');
   });
+
+  it('外观作为无关子串出现时仍注入（精确整行判断，无误判，kimi MED-1）', () => {
+    const c: Character = { id: 'c1', name: null, appearance: '短发' };
+    const s = shot({ characterRefs: ['c1'], prompt: '短发丝在风中飘动' }); // 「短发」是无关子串
+    const out = injectCharacterConsistency(project([c], [s]));
+    expect(out.shots[0].prompt).toContain('- 角色1：短发'); // 仍注入了精确参考行
+  });
+
+  it('外观换行被单行化（kimi LOW-3）', () => {
+    const c: Character = { id: 'c1', name: '阿明', appearance: '红衣\n\n短发' };
+    const out = injectCharacterConsistency(project([c], [shot({ characterRefs: ['c1'] })]));
+    expect(out.shots[0].prompt).toContain('- 阿明：红衣 短发');
+  });
+
+  it('outputLanguage=en → 英文表头（kimi LOW-2）', () => {
+    const p = project([xiaoming], [shot({ characterRefs: ['c1'] })]);
+    p.params.outputLanguage = 'en';
+    const out = injectCharacterConsistency(p);
+    expect(out.shots[0].prompt).toContain('Character consistency reference:');
+  });
 });
 
 describe('characterInstruction（提示词）', () => {
