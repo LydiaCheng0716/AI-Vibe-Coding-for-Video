@@ -1,7 +1,7 @@
 // Storage Service（chrome.storage.local）：设置 / 草稿。对齐 api-spec 3.2。
 // 所有写操作返回 Result<void>，写失败映射 STORAGE_WRITE_FAILED（ARCH-LOW-001），不静默丢数据。
 import { STORAGE_KEYS, SCHEMA_VERSION } from '../core/config';
-import { ok, err, type Result, type Settings, type Project } from '../core/models';
+import { ok, err, type Result, type Settings, type Project, type BgmPrompt } from '../core/models';
 import { defaultSettings } from '../core/defaults';
 
 interface DraftRecord {
@@ -107,5 +107,17 @@ export async function updateShotPrompt(shotId: string, prompt: string): Promise<
     });
     if (!hit) return ok(undefined);
     return doSaveProject({ ...project, shots });
+  });
+}
+
+/**
+ * 把生成好的 BGM 写回当前项目（api-spec §3.2 / TASK-007）。无当前项目 → ok 无副作用。
+ * 走 projectLock，与镜头更新串行，防并发覆盖。
+ */
+export async function updateCurrentProjectBgm(bgm: BgmPrompt): Promise<Result<void>> {
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return ok(undefined);
+    return doSaveProject({ ...project, bgm });
   });
 }

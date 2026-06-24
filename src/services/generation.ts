@@ -11,11 +11,13 @@ import {
   type Settings,
   type ProviderConfig,
 } from '../core/models';
-import { STORYBOARD_TIMEOUT_MS, MAX_OUTPUT_TOKENS } from '../core/config';
+import { STORYBOARD_TIMEOUT_MS, BGM_TIMEOUT_MS, MAX_OUTPUT_TOKENS } from '../core/config';
 import { validateStory, validateProviderConfig } from '../core/validate';
 import { buildStoryboardPrompt } from '../prompts/storyboard';
-import { parseStoryboard, buildProject } from '../core/parse';
+import { buildBgmPrompt } from '../prompts/bgm';
+import { parseStoryboard, parseBgmPrompt, buildProject } from '../core/parse';
 import { injectCharacterConsistency } from '../core/characters';
+import type { BgmPrompt, OutputLanguage } from '../core/models';
 import { ProviderCallError, createProvider, type LlmProvider } from './llm/provider';
 import { hasHostPermission, originForProvider } from './permissions';
 import { getSettings, saveCurrentProject } from './storage';
@@ -65,6 +67,42 @@ async function callWithTimeout(
 }
 
 /**
+ * 共享前置校验：Provider 配置合法 + 已配置且可解密 Key + 目标域名已有 host 权限（api-spec §3.3/§3.4）。
+ * 分镜与 BGM 复用，消除重复。返回 settings（含 params）与瞬时明文 apiKey（仅经请求链传递）。
+ */
+async function preflightProvider(
+  deps: GenerationDeps,
+): Promise<Result<{ settings: Settings; apiKey: string }>> {
+  const settings = await deps.getSettings();
+  const provider = settings.provider;
+
+  const pv = validateProviderConfig(provider);
+  if (pv === 'INVALID_PROVIDER_CONFIG')
+    return err('INVALID_PROVIDER_CONFIG', 'Provider 配置无效，请到设置里检查类型与 baseUrl。');
+  if (pv === 'MODEL_REQUIRED') return err('MODEL_REQUIRED', '请在设置里填写要使用的模型名。');
+
+  // 已配置且可解密 Key（ADR-1）。解密一次，经请求链瞬时传给 provider，不二次解密。
+  if (!(await deps.hasApiKey())) return err('NO_API_KEY', '请先到设置里配置 API Key 再生成。');
+  const apiKey = await deps.getApiKeyForRequest();
+  if (apiKey == null)
+    return err('KEY_DECRYPT_FAILED', '本地密钥已损坏，请到设置里重新输入 API Key。');
+
+  // 目标域名已有 host 权限（ADR-5）
+  const origin = originForProvider(provider);
+  if (!origin) return err('INVALID_PROVIDER_CONFIG', 'Provider 配置无效，请到设置里检查 baseUrl。');
+  if (!(await deps.hasHostPermission(origin)))
+    return err('HOST_PERMISSION_DENIED', `需要授权访问 ${origin} 才能调用，请在弹窗中允许。`);
+
+  return ok({ settings, apiKey });
+}
+
+/** 把 provider 异常归一成 Result.err（含 retryAfterMs 透传）。 */
+function providerErr(e: unknown): Result<never> {
+  if (e instanceof ProviderCallError) return err(e.code, e.message, e.retriable, e.retryAfterMs);
+  return err('NETWORK_ERROR', '网络异常，请稍后重试。', true);
+}
+
+/**
  * 单次生成尝试：前置校验 → prompt → provider → ADR-6 解析，**不落库**。
  * 这是给 TASK-009 包裹（全局锁 + 失败退避重试）的最小单元——重试只会重发 LLM 调用，
  * 不会重复执行 saveCurrentProject。前置校验任一失败立即返回，不发出站请求（api-spec §3.3）。
@@ -73,36 +111,18 @@ export async function generateStoryboardAttempt(
   input: { story: string; params?: Settings['params'] },
   deps: GenerationDeps = realDeps,
 ): Promise<Result<Project>> {
-  // 2. 故事非空 / 3. 长度边界（ADR-2，trim 后码点数）
+  // 故事非空 / 长度边界（ADR-2，trim 后码点数）
   const sv = validateStory(input.story);
   if (sv.code === 'EMPTY_STORY') return err('EMPTY_STORY', '请先输入故事内容。');
   if (sv.code === 'STORY_TOO_SHORT') return err('STORY_TOO_SHORT', '故事内容太短，至少 10 个字。');
   if (sv.code === 'STORY_TOO_LONG')
     return err('STORY_TOO_LONG', '故事太长了，请缩短到 5000 字以内。');
 
-  const settings = await deps.getSettings();
+  const pre = await preflightProvider(deps);
+  if (!pre.ok) return pre;
+  const { settings, apiKey } = pre.data;
   const params = input.params ?? settings.params;
   const provider = settings.provider;
-
-  // 4. Provider 配置合法（ADR-4/ADR-5）
-  const pv = validateProviderConfig(provider);
-  if (pv === 'INVALID_PROVIDER_CONFIG')
-    return err('INVALID_PROVIDER_CONFIG', 'Provider 配置无效，请到设置里检查类型与 baseUrl。');
-  if (pv === 'MODEL_REQUIRED')
-    return err('MODEL_REQUIRED', '请在设置里填写要使用的模型名。');
-
-  // 5. 已配置且可解密 Key（ADR-1）。解密一次，经请求链瞬时传给 provider，不二次解密。
-  if (!(await deps.hasApiKey())) return err('NO_API_KEY', '请先到设置里配置 API Key 再生成。');
-  const apiKey = await deps.getApiKeyForRequest();
-  if (apiKey == null)
-    return err('KEY_DECRYPT_FAILED', '本地密钥已损坏，请到设置里重新输入 API Key。');
-
-  // 6. 目标域名已有 host 权限（ADR-5）
-  const origin = originForProvider(provider);
-  if (!origin)
-    return err('INVALID_PROVIDER_CONFIG', 'Provider 配置无效，请到设置里检查 baseUrl。');
-  if (!(await deps.hasHostPermission(origin)))
-    return err('HOST_PERMISSION_DENIED', `需要授权访问 ${origin} 才能调用，请在弹窗中允许。`);
 
   // 构造 prompt 并发起单次调用
   const { system, user } = buildStoryboardPrompt(input.story, params);
@@ -114,8 +134,7 @@ export async function generateStoryboardAttempt(
       STORYBOARD_TIMEOUT_MS,
     );
   } catch (e) {
-    if (e instanceof ProviderCallError) return err(e.code, e.message, e.retriable, e.retryAfterMs);
-    return err('NETWORK_ERROR', '网络异常，请稍后重试。', true);
+    return providerErr(e);
   }
 
   // 解析 + 校验（ADR-6）
@@ -144,4 +163,57 @@ export async function generateStoryboard(
     if (!saved.ok) return saved;
     return ok(attempt.data);
   });
+}
+
+// ---- BGM 提示词生成（TASK-007，api-spec §3.4）----
+
+export interface BgmInput {
+  story?: string;
+  project?: Project;
+  language: OutputLanguage;
+}
+
+/** 单次 BGM 尝试：校验输入 + 共享前置校验 → provider（60s）→ 解析，**不持久化**。 */
+export async function generateBgmPromptAttempt(
+  input: BgmInput,
+  deps: GenerationDeps = realDeps,
+): Promise<Result<BgmPrompt>> {
+  // story 与 project 至少其一（api-spec §3.4）
+  const hasStory = !!input.story && input.story.trim() !== '';
+  const hasProject = !!input.project && input.project.shots.length > 0;
+  if (!hasStory && !hasProject)
+    return err('NO_GENERATION_INPUT', '请先输入故事或生成分镜，再生成 BGM 提示词。');
+
+  const pre = await preflightProvider(deps);
+  if (!pre.ok) return pre;
+  const { settings, apiKey } = pre.data;
+  const provider = settings.provider;
+
+  const { system, user } = buildBgmPrompt(input, input.language);
+  let raw: string;
+  try {
+    raw = await callWithTimeout(
+      deps.createProvider(provider),
+      { system, user, model: provider.model, apiKey },
+      BGM_TIMEOUT_MS,
+    );
+  } catch (e) {
+    return providerErr(e);
+  }
+
+  const prompt = parseBgmPrompt(raw);
+  if (!prompt) return err('BAD_RESPONSE_FORMAT', '生成结果格式异常，请重试。');
+  return ok({ prompt, language: input.language });
+}
+
+/**
+ * 生成 BGM 提示词（TASK-007）：与分镜共享同一把全局锁（互斥，ARCH-MED-004）+ 退避重试。
+ * **不自行持久化**——调用方成功后用 storage.updateCurrentProjectBgm 写回（api-spec §3.4）。
+ */
+export async function generateBgmPrompt(
+  input: BgmInput,
+  deps: GenerationDeps = realDeps,
+  retryOpts: RetryOptions = {},
+): Promise<Result<BgmPrompt>> {
+  return withLlmLock(() => withRetry(() => generateBgmPromptAttempt(input, deps), retryOpts));
 }
