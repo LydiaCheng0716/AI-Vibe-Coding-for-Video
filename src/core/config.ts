@@ -11,6 +11,13 @@ export const STORY_SOFT_MIN = 30;
 /** 防抖：故事草稿写入延迟（ms）。 */
 export const DRAFT_DEBOUNCE_MS = 300;
 
+/** 单次出站生成超时（ms，ADR-3）：分镜较长给 90s，BGM 较短给 60s。 */
+export const STORYBOARD_TIMEOUT_MS = 90_000;
+export const BGM_TIMEOUT_MS = 60_000;
+
+/** 出站请求 max_tokens 上限（ADR-6(4) 大小保护 / api-spec §4）。 */
+export const MAX_OUTPUT_TOKENS = 4000;
+
 /** 本地存储 schema 版本（迁移用）。 */
 export const SCHEMA_VERSION = 1;
 

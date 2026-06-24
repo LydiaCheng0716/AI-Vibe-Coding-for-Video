@@ -63,7 +63,7 @@ export interface Project {
   bgm?: BgmPrompt;
 }
 
-/** 面向用户的错误码（对齐 api-spec §2，本 Issue 用到其中一部分）。 */
+/** 面向用户的错误码（对齐 api-spec §2，全集）。 */
 export type ErrorCode =
   | 'EMPTY_STORY'
   | 'STORY_TOO_SHORT'
@@ -72,8 +72,17 @@ export type ErrorCode =
   | 'INVALID_PROVIDER_CONFIG'
   | 'MODEL_REQUIRED'
   | 'KEY_DECRYPT_FAILED'
+  | 'HOST_PERMISSION_DENIED'
+  | 'CORS_BLOCKED'
+  | 'AUTH_FAILED'
+  | 'RATE_LIMITED'
+  | 'NETWORK_ERROR'
+  | 'BAD_RESPONSE_FORMAT'
+  | 'GENERATION_IN_PROGRESS'
   | 'STORAGE_WRITE_FAILED'
-  | 'CLIPBOARD_FAILED';
+  | 'CLIPBOARD_FAILED'
+  | 'NO_GENERATION_INPUT'
+  | 'NOTHING_TO_EXPORT';
 
 export interface AppError {
   code: ErrorCode;

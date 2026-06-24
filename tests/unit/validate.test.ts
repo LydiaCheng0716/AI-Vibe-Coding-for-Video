@@ -1,5 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { validateStory, codePointLength } from '../../src/core/validate';
+import { validateStory, codePointLength, validateProviderConfig } from '../../src/core/validate';
+import type { ProviderConfig } from '../../src/core/models';
+
+describe('validateProviderConfig', () => {
+  const base: ProviderConfig = { kind: 'openai-compatible', model: 'gpt-4o-mini' };
+  it('合法 openai-compatible + model', () => {
+    expect(validateProviderConfig(base)).toBe('OK');
+  });
+  it('合法 https baseUrl', () => {
+    expect(validateProviderConfig({ ...base, baseUrl: 'https://api.x.com/v1' })).toBe('OK');
+  });
+  it('非 https baseUrl → INVALID_PROVIDER_CONFIG', () => {
+    expect(validateProviderConfig({ ...base, baseUrl: 'http://x.com' })).toBe('INVALID_PROVIDER_CONFIG');
+  });
+  it('非法 URL → INVALID_PROVIDER_CONFIG', () => {
+    expect(validateProviderConfig({ ...base, baseUrl: 'not a url' })).toBe('INVALID_PROVIDER_CONFIG');
+  });
+  it('未知 kind → INVALID_PROVIDER_CONFIG', () => {
+    expect(validateProviderConfig({ kind: 'x' as never, model: 'm' })).toBe('INVALID_PROVIDER_CONFIG');
+  });
+  it('空 model → MODEL_REQUIRED', () => {
+    expect(validateProviderConfig({ ...base, model: '  ' })).toBe('MODEL_REQUIRED');
+  });
+  it('anthropic 忽略 baseUrl', () => {
+    expect(validateProviderConfig({ kind: 'anthropic', model: 'm', baseUrl: 'http://x' })).toBe('OK');
+  });
+  it('null → INVALID_PROVIDER_CONFIG', () => {
+    expect(validateProviderConfig(null)).toBe('INVALID_PROVIDER_CONFIG');
+  });
+});
 
 describe('codePointLength', () => {
   it('counts plain ascii', () => {
