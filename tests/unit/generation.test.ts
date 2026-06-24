@@ -124,16 +124,12 @@ describe('generateStoryboard: 成功与出站失败', () => {
     }
   });
 
-  it('429 → RATE_LIMITED（retriable=true 透传给 009）', async () => {
-    const provider: LlmProvider = {
-      complete: vi.fn().mockRejectedValue(new ProviderCallError('RATE_LIMITED', 'x', true)),
-    };
-    const deps = makeDeps({ createProvider: vi.fn().mockReturnValue(provider) });
-    const r = await generateStoryboard({ story: STORY }, deps);
-    if (!r.ok) {
-      expect(r.error.code).toBe('RATE_LIMITED');
-      expect(r.error.retriable).toBe(true);
-    }
+  it('429 → 重试耗尽后 RATE_LIMITED（注入 no-op sleep）', async () => {
+    const complete = vi.fn().mockRejectedValue(new ProviderCallError('RATE_LIMITED', 'x', true));
+    const deps = makeDeps({ createProvider: vi.fn().mockReturnValue({ complete }) });
+    const r = await generateStoryboard({ story: STORY }, deps, { sleep: async () => {} });
+    if (!r.ok) expect(r.error.code).toBe('RATE_LIMITED');
+    expect(complete).toHaveBeenCalledTimes(3); // 1 + 2 retries
   });
 
   it('返回无法解析 → BAD_RESPONSE_FORMAT', async () => {
@@ -160,6 +156,45 @@ describe('generateStoryboard: 成功与出站失败', () => {
     await generateStoryboard({ story: STORY }, deps);
     expect(getKey).toHaveBeenCalledTimes(1);
     expect(complete.mock.calls[0][0]).toMatchObject({ apiKey: 'sk-once' });
+  });
+
+  it('进行中再次调用 → GENERATION_IN_PROGRESS（共享全局锁）', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const complete = vi.fn(async () => {
+      await gate;
+      return goodShots();
+    });
+    const deps = makeDeps({ createProvider: vi.fn().mockReturnValue({ complete }) });
+    const first = generateStoryboard({ story: STORY }, deps);
+    const second = await generateStoryboard({ story: STORY }, deps);
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.error.code).toBe('GENERATION_IN_PROGRESS');
+    release();
+    expect((await first).ok).toBe(true);
+  });
+
+  it('429 重试一次后成功（注入 no-op sleep）→ 只落库一次', async () => {
+    const complete = vi
+      .fn()
+      .mockRejectedValueOnce(new ProviderCallError('RATE_LIMITED', 'x', true))
+      .mockResolvedValueOnce(goodShots());
+    const save = vi.fn().mockResolvedValue(ok(undefined));
+    const deps = makeDeps({
+      createProvider: vi.fn().mockReturnValue({ complete }),
+      saveCurrentProject: save,
+    });
+    const r = await generateStoryboard({ story: STORY }, deps, { sleep: async () => {} });
+    expect(r.ok).toBe(true);
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('AUTH_FAILED 不重试（只调用一次）', async () => {
+    const complete = vi.fn().mockRejectedValue(new ProviderCallError('AUTH_FAILED', 'x', false));
+    const deps = makeDeps({ createProvider: vi.fn().mockReturnValue({ complete }) });
+    await generateStoryboard({ story: STORY }, deps, { sleep: async () => {} });
+    expect(complete).toHaveBeenCalledTimes(1);
   });
 
   it('storage 写失败 → STORAGE_WRITE_FAILED', async () => {

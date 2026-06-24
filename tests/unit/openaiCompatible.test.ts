@@ -112,6 +112,16 @@ describe('openaiCompatible: 状态码 → ErrorCode（api-spec §5）', () => {
     });
   });
 
+  it('429 带 Retry-After: 2 → retryAfterMs=2000（TASK-009）', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ e: 1 }), { status: 429, headers: { 'Retry-After': '2' } }),
+    );
+    await expect(createOpenAiCompatibleProvider().complete(req)).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+      retryAfterMs: 2000,
+    });
+  });
+
   it('500 → NETWORK_ERROR retriable', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ e: 1 }, { status: 500 }));
     await expect(createOpenAiCompatibleProvider().complete(req)).rejects.toMatchObject({

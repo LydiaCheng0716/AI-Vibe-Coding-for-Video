@@ -33,6 +33,8 @@ export class ProviderCallError extends Error {
     readonly code: ErrorCode,
     message: string,
     readonly retriable: boolean,
+    /** 429 Retry-After 等退避提示（ms），供 TASK-009 重试层优先采用。 */
+    readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = 'ProviderCallError';

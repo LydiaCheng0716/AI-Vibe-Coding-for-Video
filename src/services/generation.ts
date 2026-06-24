@@ -19,6 +19,8 @@ import { ProviderCallError, createProvider, type LlmProvider } from './llm/provi
 import { hasHostPermission, originForProvider } from './permissions';
 import { getSettings, saveCurrentProject } from './storage';
 import { hasApiKey, getApiKeyForRequest } from './keyVault';
+import { withLlmLock } from './llmLock';
+import { withRetry, type RetryOptions } from '../lib/retry';
 
 /** 可注入依赖（默认接真实实现；测试可替换）。 */
 export interface GenerationDeps {
@@ -111,7 +113,7 @@ export async function generateStoryboardAttempt(
       STORYBOARD_TIMEOUT_MS,
     );
   } catch (e) {
-    if (e instanceof ProviderCallError) return err(e.code, e.message, e.retriable);
+    if (e instanceof ProviderCallError) return err(e.code, e.message, e.retriable, e.retryAfterMs);
     return err('NETWORK_ERROR', '网络异常，请稍后重试。', true);
   }
 
@@ -123,17 +125,20 @@ export async function generateStoryboardAttempt(
 }
 
 /**
- * 生成完整分镜并落库。= 单次尝试 + saveCurrentProject。
- * 注意：本函数不持全局锁、不自动重试——那是 TASK-009 的职责（009 会在 attempt 上加锁/重试，
- * 成功后再落库一次）。
+ * 生成完整分镜并落库（TASK-009 接入）：全局锁(并发=1) → 退避重试(仅 LLM 部分) → 落库一次。
+ * - 进行中再次调用 → GENERATION_IN_PROGRESS（防重复提交，分镜与 BGM 共享锁）。
+ * - 重试只重发 LLM 调用，不重复写 storage。
  */
 export async function generateStoryboard(
   input: { story: string; params?: Settings['params'] },
   deps: GenerationDeps = realDeps,
+  retryOpts: RetryOptions = {},
 ): Promise<Result<Project>> {
-  const attempt = await generateStoryboardAttempt(input, deps);
-  if (!attempt.ok) return attempt;
-  const saved = await deps.saveCurrentProject(attempt.data);
-  if (!saved.ok) return saved;
-  return ok(attempt.data);
+  return withLlmLock(async () => {
+    const attempt = await withRetry(() => generateStoryboardAttempt(input, deps), retryOpts);
+    if (!attempt.ok) return attempt;
+    const saved = await deps.saveCurrentProject(attempt.data);
+    if (!saved.ok) return saved;
+    return ok(attempt.data);
+  });
 }
