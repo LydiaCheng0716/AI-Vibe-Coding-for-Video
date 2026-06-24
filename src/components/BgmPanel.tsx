@@ -29,8 +29,12 @@ export default function BgmPanel({ project, busy, onBgmGenerated }: Props) {
       setNotice(r.error.message);
       return;
     }
-    // 服务不自行持久化：成功后写回当前项目（api-spec §3.4）。
-    await updateCurrentProjectBgm(r.data);
+    // 服务不自行持久化：成功后写回当前项目（api-spec §3.4）。写失败不静默（kimi MED）。
+    const saved = await updateCurrentProjectBgm(r.data);
+    if (!saved.ok) {
+      setNotice(saved.error.message);
+      return;
+    }
     onBgmGenerated(r.data);
     setNotice(null);
   }

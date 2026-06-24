@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   generateBgmPrompt,
   generateBgmPromptAttempt,
+  generateStoryboard,
   type GenerationDeps,
 } from '../../src/services/generation';
 import { buildBgmPrompt } from '../../src/prompts/bgm';
@@ -91,6 +92,30 @@ describe('generateBgmPrompt', () => {
     if (!second.ok) expect(second.error.code).toBe('GENERATION_IN_PROGRESS');
     release();
     expect((await first).ok).toBe(true);
+  });
+
+  it('与分镜跨类共享锁：分镜进行中 → BGM 返回 GENERATION_IN_PROGRESS', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const sbProvider = {
+      complete: vi.fn(async () => {
+        await gate;
+        return JSON.stringify({
+          shots: [
+            { summary: '1', shotSize: '近', cameraMovement: '推', durationSuggestion: '2s', prompt: 'p' },
+            { summary: '2', shotSize: '中', cameraMovement: '摇', durationSuggestion: '2s', prompt: 'p' },
+            { summary: '3', shotSize: '远', cameraMovement: '固定', durationSuggestion: '2s', prompt: 'p' },
+          ],
+        });
+      }),
+    };
+    const sbDeps = makeDeps({ createProvider: vi.fn().mockReturnValue(sbProvider) });
+    const sb = generateStoryboard({ story: STORY }, sbDeps); // 持锁中
+    const bgm = await generateBgmPrompt({ story: STORY, language: 'zh' }, makeDeps());
+    expect(bgm.ok).toBe(false);
+    if (!bgm.ok) expect(bgm.error.code).toBe('GENERATION_IN_PROGRESS');
+    release();
+    expect((await sb).ok).toBe(true);
   });
 
   it('基于 project（无 story）也可生成', async () => {

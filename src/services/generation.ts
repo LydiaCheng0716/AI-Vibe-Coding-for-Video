@@ -173,7 +173,10 @@ export interface BgmInput {
   language: OutputLanguage;
 }
 
-/** 单次 BGM 尝试：校验输入 + 共享前置校验 → provider（60s）→ 解析，**不持久化**。 */
+/**
+ * 单次 BGM 尝试：校验输入 + 共享前置校验 → provider（60s）→ 解析，**不持久化**、**不加锁**。
+ * 仅供 TASK-009 锁/重试包裹与单测使用；组件层应调 `generateBgmPrompt`（带全局锁），勿绕过。
+ */
 export async function generateBgmPromptAttempt(
   input: BgmInput,
   deps: GenerationDeps = realDeps,
