@@ -1,6 +1,40 @@
 import { describe, it, expect, vi } from 'vitest';
-import { saveDraft, getDraft, clearDraft, getSettings, saveSettings } from '../../src/services/storage';
-import { defaultSettings } from '../../src/core/defaults';
+import {
+  saveDraft,
+  getDraft,
+  clearDraft,
+  getSettings,
+  saveSettings,
+  saveCurrentProject,
+  getCurrentProject,
+  updateShotPrompt,
+} from '../../src/services/storage';
+import { defaultSettings, defaultParams } from '../../src/core/defaults';
+import type { Project, Shot } from '../../src/core/models';
+
+function mkShot(id: string, index: number): Shot {
+  return {
+    id,
+    index,
+    summary: `s${index}`,
+    shotSize: '中景',
+    cameraMovement: '固定',
+    durationSuggestion: '3s',
+    prompt: `prompt-${id}`,
+    characterRefs: [],
+    editedByUser: false,
+  };
+}
+
+function mkProject(): Project {
+  return {
+    schemaVersion: 1,
+    story: '故事',
+    params: defaultParams(),
+    characters: [],
+    shots: [mkShot('s1', 1), mkShot('s2', 2), mkShot('s3', 3)],
+  };
+}
 
 describe('storage: draft', () => {
   it('save then get returns the text', async () => {
@@ -50,5 +84,50 @@ describe('storage: write failure → STORAGE_WRITE_FAILED', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe('STORAGE_WRITE_FAILED');
     spy.mockRestore();
+  });
+});
+
+describe('storage: updateShotPrompt (TASK-006)', () => {
+  it('只改目标镜头 prompt 并置 editedByUser=true，其他不变', async () => {
+    await saveCurrentProject(mkProject());
+    const r = await updateShotPrompt('s2', '新提示词');
+    expect(r.ok).toBe(true);
+    const p = await getCurrentProject();
+    expect(p?.shots[1]).toMatchObject({ id: 's2', prompt: '新提示词', editedByUser: true });
+    expect(p?.shots[0]).toMatchObject({ prompt: 'prompt-s1', editedByUser: false });
+    expect(p?.shots[2]).toMatchObject({ prompt: 'prompt-s3', editedByUser: false });
+  });
+
+  it('无当前项目 → ok 且无副作用', async () => {
+    const r = await updateShotPrompt('s1', 'x');
+    expect(r.ok).toBe(true);
+    expect(await getCurrentProject()).toBeNull();
+  });
+
+  it('无匹配 shotId → ok 且不误改', async () => {
+    await saveCurrentProject(mkProject());
+    const r = await updateShotPrompt('nope', 'x');
+    expect(r.ok).toBe(true);
+    const p = await getCurrentProject();
+    expect(p?.shots.every((s) => !s.editedByUser)).toBe(true);
+  });
+
+  it('写失败 → STORAGE_WRITE_FAILED', async () => {
+    await saveCurrentProject(mkProject());
+    const spy = vi.spyOn(chrome.storage.local, 'set').mockRejectedValueOnce(new Error('quota'));
+    const r = await updateShotPrompt('s1', 'x');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe('STORAGE_WRITE_FAILED');
+    spy.mockRestore();
+  });
+
+  it('并发更新不同镜头不互相覆盖（kimi HIGH：RMW 串行锁）', async () => {
+    await saveCurrentProject(mkProject());
+    // 同时发起对 s1 与 s3 的更新；串行锁保证两次 RMW 都生效。
+    await Promise.all([updateShotPrompt('s1', 'A'), updateShotPrompt('s3', 'C')]);
+    const p = await getCurrentProject();
+    expect(p?.shots[0]).toMatchObject({ prompt: 'A', editedByUser: true });
+    expect(p?.shots[2]).toMatchObject({ prompt: 'C', editedByUser: true });
+    expect(p?.shots[1]).toMatchObject({ prompt: 'prompt-s2', editedByUser: false });
   });
 });

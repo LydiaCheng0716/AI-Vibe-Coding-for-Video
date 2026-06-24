@@ -2,8 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { validateStory, storyValidationMessage } from '../core/validate';
 import { STORY_MAX, DRAFT_DEBOUNCE_MS } from '../core/config';
 import { saveDraft, getDraft } from '../services/storage';
+import { generateStoryboard } from '../services/generation';
+import type { Project } from '../core/models';
 
-export default function StoryInput() {
+interface Props {
+  /** 生成成功后把项目上提给 App 渲染分镜。 */
+  onGenerated: (project: Project) => void;
+  /** 全局 LLM 锁占用中（TASK-009）：禁用生成按钮、显示加载。 */
+  busy: boolean;
+}
+
+export default function StoryInput({ onGenerated, busy }: Props) {
   const [text, setText] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -56,15 +65,23 @@ export default function StoryInput() {
     validation.code === 'EMPTY_STORY' ? null : storyValidationMessage(validation);
   const isError = validation.code !== 'OK';
 
-  function onGenerate() {
+  async function onGenerate() {
+    if (busy) return; // 兜底：busy 时不提交（按钮已 disabled，双保险）
     const v = validateStory(text);
     if (v.code !== 'OK') {
       // 阻止提交并提示（TASK-001 验收）。
       setNotice(storyValidationMessage(v));
       return;
     }
-    // 真正的分镜生成由 TASK-003 接入（被 Spike #3 阻塞）。
-    setNotice('校验通过。分镜生成将在后续版本接入。');
+    setNotice('正在生成分镜…');
+    const r = await generateStoryboard({ story: text });
+    if (r.ok) {
+      setNotice(null);
+      onGenerated(r.data);
+    } else {
+      // 含 NO_API_KEY / 配置错误 / 网络等可读提示（TASK-003/009）。
+      setNotice(r.error.message);
+    }
   }
 
   return (
@@ -90,9 +107,10 @@ export default function StoryInput() {
       <button
         type="button"
         onClick={onGenerate}
-        className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        disabled={busy}
+        className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        生成分镜
+        {busy ? '生成中…' : '生成分镜'}
       </button>
       {notice && <p className="text-xs text-gray-700">{notice}</p>}
     </div>
