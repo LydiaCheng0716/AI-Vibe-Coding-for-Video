@@ -60,8 +60,13 @@ export default function SettingsPanel() {
       }
     }
     // 关闭「保存 Key」→ 清掉已落盘的 Key，确保磁盘无残留（ADR-1 #8）。
+    // 清盘失败必须中断并提示，不能谎称已清（kimi MED）。
     if (!settings.persistApiKey && maskedKey) {
-      await clearApiKey();
+      const cleared = await clearApiKey();
+      if (!cleared.ok) {
+        setMsg(cleared.error.message);
+        return;
+      }
       setMaskedKey(null);
     }
     const r = await saveSettings(next);
@@ -176,10 +181,12 @@ export default function SettingsPanel() {
             已关闭保存：API Key 不会落盘，每次生成时在生成区临时输入，用完即弃。
           </p>
         )}
-        <p className="text-[11px] leading-snug text-gray-500">
-          你的 API Key 已在本机加密保存，只用于直接调用 AI 服务。本地加密能降低硬盘被读取时的泄露风险，
-          但无法防护已被恶意软件控制的浏览器或设备——请只在你信任的电脑上保存 Key。
-        </p>
+        {settings.persistApiKey && (
+          <p className="text-[11px] leading-snug text-gray-500">
+            你的 API Key 已在本机加密保存，只用于直接调用 AI 服务。本地加密能降低硬盘被读取时的泄露风险，
+            但无法防护已被恶意软件控制的浏览器或设备——请只在你信任的电脑上保存 Key。
+          </p>
+        )}
       </div>
 
       {/* 生成参数 */}

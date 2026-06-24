@@ -38,13 +38,17 @@ export default function BgmPanel({ project, busy, onBgmGenerated }: Props) {
     }
     const language = project?.params.outputLanguage ?? 'zh';
     setNotice('正在生成 BGM 提示词…');
-    const r = await generateBgmPrompt({
-      story: project?.story,
-      project: project ?? undefined,
-      language,
-      ...(persistKey ? {} : { apiKey: tempKey }),
-    });
-    if (!persistKey) setTempKey('');
+    let r;
+    try {
+      r = await generateBgmPrompt({
+        story: project?.story,
+        project: project ?? undefined,
+        language,
+        ...(persistKey ? {} : { apiKey: tempKey }),
+      });
+    } finally {
+      if (!persistKey) setTempKey(''); // 一次性 Key 用完即弃，异常路径也清（kimi LOW）
+    }
     if (!r.ok) {
       setNotice(r.error.message);
       return;

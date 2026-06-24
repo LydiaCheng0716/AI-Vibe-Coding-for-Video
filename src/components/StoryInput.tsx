@@ -96,17 +96,20 @@ export default function StoryInput({ onGenerated, busy }: Props) {
       return;
     }
     setNotice('正在生成分镜…');
-    const r = await generateStoryboard({
-      story: text,
-      ...(persistKey ? {} : { apiKey: tempKey }),
-    });
-    if (!persistKey) setTempKey(''); // 一次性 Key 用完即弃，不保留
-    if (r.ok) {
-      setNotice(null);
-      onGenerated(r.data);
-    } else {
-      // 含 NO_API_KEY / 配置错误 / 网络等可读提示（TASK-003/009）。
-      setNotice(r.error.message);
+    try {
+      const r = await generateStoryboard({
+        story: text,
+        ...(persistKey ? {} : { apiKey: tempKey }),
+      });
+      if (r.ok) {
+        setNotice(null);
+        onGenerated(r.data);
+      } else {
+        // 含 NO_API_KEY / 配置错误 / 网络等可读提示（TASK-003/009）。
+        setNotice(r.error.message);
+      }
+    } finally {
+      if (!persistKey) setTempKey(''); // 一次性 Key 用完即弃，异常路径也清（kimi LOW）
     }
   }
 
