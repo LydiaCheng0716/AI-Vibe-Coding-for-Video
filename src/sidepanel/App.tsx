@@ -1,9 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import StoryInput from '../components/StoryInput';
 import SettingsPanel from '../components/SettingsPanel';
+import ShotList from '../components/ShotList';
+import type { Project } from '../core/models';
+import { getCurrentProject } from '../services/storage';
+import { subscribeLlmBusy } from '../services/llmLock';
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false);
+  const [project, setProject] = useState<Project | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // 侧边栏重开时恢复上次分镜结果；订阅全局加载态（TASK-009）。
+  useEffect(() => {
+    let alive = true;
+    getCurrentProject()
+      .then((p) => {
+        if (alive && p) setProject(p);
+      })
+      .catch(() => {
+        /* 读取失败：从空开始，不影响使用 */
+      });
+    const unsub = subscribeLlmBusy(setBusy);
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, []);
+
+  // 单镜头保存后更新内存态，仅改该镜头并置 editedByUser（与 storage 一致）。
+  function onShotSaved(shotId: string, prompt: string) {
+    setProject((prev) =>
+      prev
+        ? {
+            ...prev,
+            shots: prev.shots.map((s) =>
+              s.id === shotId ? { ...s, prompt, editedByUser: true } : s,
+            ),
+          }
+        : prev,
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white text-gray-900">
@@ -21,7 +58,16 @@ export default function App() {
           {showSettings ? '返回' : '设置'}
         </button>
       </header>
-      <main>{showSettings ? <SettingsPanel /> : <StoryInput />}</main>
+      <main>
+        {showSettings ? (
+          <SettingsPanel />
+        ) : (
+          <>
+            <StoryInput onGenerated={setProject} busy={busy} />
+            {project && <ShotList shots={project.shots} onShotSaved={onShotSaved} />}
+          </>
+        )}
+      </main>
     </div>
   );
 }

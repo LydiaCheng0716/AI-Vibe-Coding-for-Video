@@ -76,3 +76,20 @@ export async function saveCurrentProject(project: Project): Promise<Result<void>
     [STORAGE_KEYS.currentProject]: { ...project, schemaVersion: SCHEMA_VERSION },
   });
 }
+
+/**
+ * 局部更新单个镜头提示词：仅改该镜头并置 editedByUser=true，其余镜头不变（api-spec §3.2 / TASK-006）。
+ * 无当前项目或无匹配 shotId → 返回 ok（无副作用，不误改）。
+ */
+export async function updateShotPrompt(shotId: string, prompt: string): Promise<Result<void>> {
+  const project = await getCurrentProject();
+  if (!project) return ok(undefined);
+  let hit = false;
+  const shots = project.shots.map((s) => {
+    if (s.id !== shotId) return s;
+    hit = true;
+    return { ...s, prompt, editedByUser: true };
+  });
+  if (!hit) return ok(undefined);
+  return saveCurrentProject({ ...project, shots });
+}
