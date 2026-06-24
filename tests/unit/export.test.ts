@@ -1,0 +1,105 @@
+import { describe, it, expect } from 'vitest';
+import { exportProject } from '../../src/core/export';
+import { defaultParams } from '../../src/core/defaults';
+import type { Project, Shot, Character, BgmPrompt } from '../../src/core/models';
+
+function mkShot(i: number, over: Partial<Shot> = {}): Shot {
+  return {
+    id: `s${i}`,
+    index: i,
+    summary: `概要${i}`,
+    shotSize: '中景',
+    cameraMovement: '推',
+    durationSuggestion: '3s',
+    prompt: `提示词${i}`,
+    characterRefs: [],
+    editedByUser: false,
+    ...over,
+  };
+}
+
+function mkProject(over: Partial<Project> = {}): Project {
+  return {
+    schemaVersion: 1,
+    story: '一个测试故事',
+    params: defaultParams(),
+    characters: [{ id: 'c1', name: '小明', appearance: '红衣男孩' } as Character],
+    shots: [mkShot(1), mkShot(2), mkShot(3)],
+    ...over,
+  };
+}
+
+describe('exportProject: 空结果', () => {
+  it('null project → NOTHING_TO_EXPORT', () => {
+    const r = exportProject(null, 'json');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe('NOTHING_TO_EXPORT');
+  });
+  it('无 shots → NOTHING_TO_EXPORT', () => {
+    const r = exportProject(mkProject({ shots: [] }), 'markdown');
+    if (!r.ok) expect(r.error.code).toBe('NOTHING_TO_EXPORT');
+  });
+});
+
+describe('exportProject: JSON', () => {
+  it('可被 JSON.parse 回结构，含稳定字段', () => {
+    const r = exportProject(mkProject(), 'json');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const obj = JSON.parse(r.data);
+      expect(obj.story).toBe('一个测试故事');
+      expect(obj.shots).toHaveLength(3);
+      expect(obj.characters[0].appearance).toBe('红衣男孩');
+      expect(obj.bgm).toBeUndefined();
+    }
+  });
+  it('有 bgm 时含 bgm', () => {
+    const bgm: BgmPrompt = { prompt: '舒缓钢琴', language: 'zh' };
+    const r = exportProject(mkProject({ bgm }), 'json');
+    if (r.ok) expect(JSON.parse(r.data).bgm.prompt).toBe('舒缓钢琴');
+  });
+});
+
+describe('exportProject: Markdown', () => {
+  it('含每镜头概要/景别/运镜/时长/提示词 + 角色', () => {
+    const r = exportProject(mkProject(), 'markdown');
+    if (r.ok) {
+      expect(r.data).toContain('镜头 1：概要1');
+      expect(r.data).toContain('景别：中景');
+      expect(r.data).toContain('提示词1');
+      expect(r.data).toContain('红衣男孩');
+    }
+  });
+  it('有 BGM 含 BGM 段', () => {
+    const r = exportProject(mkProject({ bgm: { prompt: '电子节奏', language: 'zh' } }), 'markdown');
+    if (r.ok) {
+      expect(r.data).toContain('BGM 提示词');
+      expect(r.data).toContain('电子节奏');
+    }
+  });
+});
+
+describe('exportProject: 纯文本 + 编辑后内容 + 隐私', () => {
+  it('纯文本含所有镜头提示词', () => {
+    const r = exportProject(mkProject(), 'plaintext');
+    if (r.ok) {
+      expect(r.data).toContain('提示词1');
+      expect(r.data).toContain('提示词3');
+    }
+  });
+  it('编辑后的镜头导出含最新内容', () => {
+    const edited = mkProject({ shots: [mkShot(1, { prompt: '用户改过的内容', editedByUser: true }), mkShot(2), mkShot(3)] });
+    const r = exportProject(edited, 'markdown');
+    if (r.ok) expect(r.data).toContain('用户改过的内容');
+  });
+  it('导出不含 Key/凭据字段名（ARCH-LOW-002）', () => {
+    for (const f of ['json', 'markdown', 'plaintext'] as const) {
+      const r = exportProject(mkProject(), f);
+      if (r.ok) {
+        expect(r.data).not.toContain('apiKey');
+        expect(r.data).not.toContain('baseUrl');
+        expect(r.data).not.toContain('grantedOrigins');
+      }
+    }
+  });
+});

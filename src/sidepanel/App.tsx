@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import StoryInput from '../components/StoryInput';
 import SettingsPanel from '../components/SettingsPanel';
 import ShotList from '../components/ShotList';
+import ExportPanel from '../components/ExportPanel';
 import type { Project } from '../core/models';
 import { getCurrentProject } from '../services/storage';
 import { subscribeLlmBusy } from '../services/llmLock';
@@ -64,7 +65,12 @@ export default function App() {
         ) : (
           <>
             <StoryInput onGenerated={setProject} busy={busy} />
-            {project && <ShotList shots={project.shots} onShotSaved={onShotSaved} />}
+            {project && (
+              <>
+                <ShotList shots={project.shots} onShotSaved={onShotSaved} />
+                <ExportPanel project={project} />
+              </>
+            )}
           </>
         )}
       </main>
