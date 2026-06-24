@@ -8,6 +8,7 @@ import {
   saveCurrentProject,
   getCurrentProject,
   updateShotPrompt,
+  updateCurrentProjectBgm,
 } from '../../src/services/storage';
 import { defaultSettings, defaultParams } from '../../src/core/defaults';
 import type { Project, Shot } from '../../src/core/models';
@@ -119,6 +120,15 @@ describe('storage: updateShotPrompt (TASK-006)', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe('STORAGE_WRITE_FAILED');
     spy.mockRestore();
+  });
+
+  it('updateCurrentProjectBgm 写回 bgm；无项目 → ok 无副作用', async () => {
+    expect((await updateCurrentProjectBgm({ prompt: 'x', language: 'zh' })).ok).toBe(true);
+    expect(await getCurrentProject()).toBeNull();
+    await saveCurrentProject(mkProject());
+    const r = await updateCurrentProjectBgm({ prompt: '舒缓钢琴', language: 'zh' });
+    expect(r.ok).toBe(true);
+    expect((await getCurrentProject())?.bgm?.prompt).toBe('舒缓钢琴');
   });
 
   it('并发更新不同镜头不互相覆盖（kimi HIGH：RMW 串行锁）', async () => {

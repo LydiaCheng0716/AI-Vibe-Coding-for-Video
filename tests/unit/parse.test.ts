@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { parseStoryboard } from '../../src/core/parse';
+import { parseStoryboard, parseBgmPrompt } from '../../src/core/parse';
+
+describe('parseBgmPrompt（TASK-007）', () => {
+  it('JSON {prompt} → 取 prompt', () => {
+    expect(parseBgmPrompt('{"prompt":"舒缓钢琴曲"}')).toBe('舒缓钢琴曲');
+  });
+  it('JSON {bgm:{prompt}} → 取 bgm.prompt', () => {
+    expect(parseBgmPrompt('{"bgm":{"prompt":"电子节奏"}}')).toBe('电子节奏');
+  });
+  it('fenced JSON 也能解析', () => {
+    expect(parseBgmPrompt('```json\n{"prompt":"轻快民谣"}\n```')).toBe('轻快民谣');
+  });
+  it('非 JSON 纯文本 → 回退为整段文本', () => {
+    expect(parseBgmPrompt('  一段温暖的弦乐  ')).toBe('一段温暖的弦乐');
+  });
+  it('空 → null', () => {
+    expect(parseBgmPrompt('')).toBeNull();
+    expect(parseBgmPrompt('   ')).toBeNull();
+  });
+});
 
 function shot(over: Partial<Record<string, unknown>> = {}) {
   return {

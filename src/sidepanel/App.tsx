@@ -3,7 +3,8 @@ import StoryInput from '../components/StoryInput';
 import SettingsPanel from '../components/SettingsPanel';
 import ShotList from '../components/ShotList';
 import ExportPanel from '../components/ExportPanel';
-import type { Project } from '../core/models';
+import BgmPanel from '../components/BgmPanel';
+import type { Project, BgmPrompt } from '../core/models';
 import { getCurrentProject } from '../services/storage';
 import { subscribeLlmBusy } from '../services/llmLock';
 
@@ -43,6 +44,10 @@ export default function App() {
     );
   }
 
+  function onBgmGenerated(bgm: BgmPrompt) {
+    setProject((prev) => (prev ? { ...prev, bgm } : prev));
+  }
+
   return (
     <div className="min-h-screen bg-white text-gray-900">
       <header className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
@@ -68,6 +73,7 @@ export default function App() {
             {project && (
               <>
                 <ShotList shots={project.shots} onShotSaved={onShotSaved} />
+                <BgmPanel project={project} busy={busy} onBgmGenerated={onBgmGenerated} />
                 <ExportPanel project={project} />
               </>
             )}

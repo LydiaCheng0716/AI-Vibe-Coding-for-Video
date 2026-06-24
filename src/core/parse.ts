@@ -172,6 +172,21 @@ export function parseStoryboard(raw: string): ParseResult {
   return { ok: true, characters, shots };
 }
 
+/**
+ * 解析 BGM 提示词文本（TASK-007）。先尝试 JSON 取 prompt / bgm.prompt；失败则回退为整段
+ * trim 文本（BGM 本就是自由文本，回退安全）；空 → null（调用方转 BAD_RESPONSE_FORMAT）。
+ */
+export function parseBgmPrompt(raw: string): string | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const obj = tryParseObject(raw);
+  if (isObj(obj)) {
+    if (nonEmptyStr(obj.prompt)) return obj.prompt.trim();
+    if (isObj(obj.bgm) && nonEmptyStr(obj.bgm.prompt)) return obj.bgm.prompt.trim();
+  }
+  const text = raw.trim();
+  return text.length > 0 ? text : null;
+}
+
 /** 把解析结果组装成完整 Project（供 generation.ts 落库）。 */
 export function buildProject(
   story: string,
