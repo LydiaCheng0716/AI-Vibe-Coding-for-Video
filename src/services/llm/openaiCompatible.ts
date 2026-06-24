@@ -76,7 +76,8 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
       if (!res.ok) {
         const { code, retriable } = mapHttpStatus(res.status);
         // 错误正文不回传给用户（可能含敏感细节）；只给可读文案。
-        throw new ProviderCallError(code, providerMessage(code), retriable);
+        const retryAfterMs = res.status === 429 ? parseRetryAfter(res) : undefined;
+        throw new ProviderCallError(code, providerMessage(code), retriable, retryAfterMs);
       }
 
       let json: unknown;
@@ -102,6 +103,17 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
       return content;
     },
   };
+}
+
+/** 解析 429 Retry-After（秒 或 HTTP-date）→ ms；无法解析返回 undefined。 */
+function parseRetryAfter(res: Response): number | undefined {
+  const raw = res.headers.get('Retry-After');
+  if (!raw) return undefined;
+  const secs = Number(raw);
+  if (Number.isFinite(secs) && secs >= 0) return secs * 1000;
+  const date = Date.parse(raw);
+  if (!Number.isNaN(date)) return Math.max(0, date - Date.now());
+  return undefined;
 }
 
 function providerMessage(code: string): string {

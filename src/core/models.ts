@@ -88,12 +88,19 @@ export interface AppError {
   code: ErrorCode;
   message: string;
   retriable: boolean;
+  /** 内部退避提示（ms）：429 的 Retry-After 等；重试层优先采用（TASK-009）。非 UI 字段。 */
+  retryAfterMs?: number;
 }
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: AppError };
 
 export const ok = <T>(data: T): Result<T> => ({ ok: true, data });
-export const err = (code: ErrorCode, message: string, retriable = false): Result<never> => ({
+export const err = (
+  code: ErrorCode,
+  message: string,
+  retriable = false,
+  retryAfterMs?: number,
+): Result<never> => ({
   ok: false,
-  error: { code, message, retriable },
+  error: { code, message, retriable, ...(retryAfterMs != null ? { retryAfterMs } : {}) },
 });
