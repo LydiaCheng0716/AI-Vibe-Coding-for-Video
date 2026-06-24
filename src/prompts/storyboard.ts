@@ -1,8 +1,10 @@
-// 分镜生成的 system / user 提示词构造（TASK-003）。
-// system 明确要求模型「只输出 JSON、不要解释文字」，外壳对齐 ADR-6(1)。
-// 模板细化（英文电影感 / 即梦·可灵中文）属 TASK-004；本任务用通用骨架并按 outputLanguage 切语言。
+// 分镜生成的 system / user 提示词构造（TASK-003，TASK-004 接入模板）。
+// system 明确要求模型「只输出 JSON、不要解释文字」，外壳对齐 ADR-6(1)；
+// 每个 shot.prompt 的结构与语言由所选模板（cinematic-en / jimeng-keling-zh）注入。
 import type { GenerationParams } from '../core/models';
 import { SHOTS_MIN, SHOTS_MAX } from '../core/parse';
+import { resolveTemplate } from './templates';
+import { clampField } from './sanitize';
 
 export interface PromptPair {
   system: string;
@@ -24,13 +26,16 @@ function langLabel(lang: GenerationParams['outputLanguage']): string {
 
 export function buildStoryboardPrompt(story: string, params: GenerationParams): PromptPair {
   const lang = langLabel(params.outputLanguage);
+  const { template } = resolveTemplate(params);
   const system = [
     '你是专业的短视频分镜师，把用户故事拆解成可直接用于 AI 视频生成的结构化分镜。',
     `要求：`,
     `- 输出 ${SHOTS_MIN}–${SHOTS_MAX} 个镜头；镜头数量根据故事繁简自行决定，但必须在该区间内。`,
     `- 每个镜头必须包含：summary（概要）、shotSize（景别）、cameraMovement（运镜）、durationSuggestion（时长建议）、prompt（完整视频提示词，含正向描述与负面提示词）。`,
     `- 若故事出现明确人物，在 characters 输出统一外观描述并用 characterRefs 引用；无明确人物则 characters 为空数组，不要编造。`,
-    `- 所有面向阅读的文本字段用 ${lang} 输出。`,
+    `- summary / shotSize / cameraMovement / durationSuggestion 等可读字段用 ${lang} 输出。`,
+    '',
+    template.shotPromptInstruction(params),
     '',
     '只输出符合下面结构的 JSON，不要任何解释文字、不要 Markdown 代码块标记：',
     JSON_SHELL,
@@ -41,8 +46,8 @@ export function buildStoryboardPrompt(story: string, params: GenerationParams): 
     '',
     '生成参数：',
     `- 目标视频模型：${params.videoModel}`,
-    `- 画面风格：${params.style || '（未指定，由你按故事氛围决定）'}`,
-    `- 画幅比例：${params.aspectRatio}`,
+    `- 画面风格：${clampField(params.style) || '（未指定，由你按故事氛围决定）'}`,
+    `- 画幅比例：${clampField(params.aspectRatio, 20)}`,
     `- 单镜头时长偏好：${params.shotDurationPref}`,
     `- 输出语言：${lang}`,
   ].join('\n');
