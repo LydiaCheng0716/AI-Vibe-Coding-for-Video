@@ -102,4 +102,21 @@ describe('exportProject: 纯文本 + 编辑后内容 + 隐私', () => {
       }
     }
   });
+
+  it('JSON 顶层字段白名单（防未来新增字段误泄露，kimi LOW）', () => {
+    const r = exportProject(mkProject({ bgm: { prompt: 'p', language: 'zh' } }), 'json');
+    if (r.ok) {
+      const keys = Object.keys(JSON.parse(r.data)).sort();
+      expect(keys).toEqual(['bgm', 'characters', 'params', 'schemaVersion', 'shots', 'story']);
+    }
+  });
+
+  it('Markdown 对含反引号的 prompt 用更长围栏（kimi LOW）', () => {
+    const p = mkProject({ shots: [mkShot(1, { prompt: '含```代码块的提示词' }), mkShot(2), mkShot(3)] });
+    const r = exportProject(p, 'markdown');
+    if (r.ok) {
+      expect(r.data).toContain('````'); // 至少 4 个反引号围栏
+      expect(r.data).toContain('含```代码块的提示词');
+    }
+  });
 });

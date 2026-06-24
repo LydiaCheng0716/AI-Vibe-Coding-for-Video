@@ -29,8 +29,13 @@ export default function ExportPanel({ project }: Props) {
     const a = document.createElement('a');
     a.href = url;
     a.download = `storyboard.${meta.ext}`;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    // 延迟回收：立即 revoke 在部分浏览器会中断下载（kimi MED）。
+    window.setTimeout(() => {
+      a.remove();
+      URL.revokeObjectURL(url);
+    }, 0);
     setNotice('已开始下载');
   }
 

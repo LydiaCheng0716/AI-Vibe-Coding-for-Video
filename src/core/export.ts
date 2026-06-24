@@ -15,6 +15,18 @@ function charLabel(c: Character, i: number): string {
   return c.name ?? `角色${i + 1}`;
 }
 
+/** 动态围栏：若内容含连续反引号，用更长的围栏避免代码块提前闭合（kimi LOW）。 */
+function fence(content: string): { open: string; close: string } {
+  const longest = (content.match(/`+/g) ?? []).reduce((m, s) => Math.max(m, s.length), 0);
+  const ticks = '`'.repeat(Math.max(3, longest + 1));
+  return { open: ticks, close: ticks };
+}
+
+function codeBlock(content: string): string[] {
+  const { open, close } = fence(content);
+  return [open, content, close];
+}
+
 function toJson(p: Project): string {
   // 稳定字段名，为未来「历史项目/导入」预留（api-spec §2）。
   return JSON.stringify(
@@ -38,9 +50,7 @@ function shotMd(s: Shot): string {
     `- 运镜：${s.cameraMovement}`,
     `- 时长：${s.durationSuggestion}`,
     '',
-    '```',
-    s.prompt,
-    '```',
+    ...codeBlock(s.prompt),
   ].join('\n');
 }
 
@@ -54,7 +64,7 @@ function toMarkdown(p: Project): string {
   parts.push('## 分镜', '');
   p.shots.forEach((s) => parts.push(shotMd(s), ''));
   if (p.bgm) {
-    parts.push('## BGM 提示词', '', '```', p.bgm.prompt, '```', '');
+    parts.push('## BGM 提示词', '', ...codeBlock(p.bgm.prompt), '');
   }
   return parts.join('\n').trimEnd() + '\n';
 }
