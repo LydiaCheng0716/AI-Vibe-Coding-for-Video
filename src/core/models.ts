@@ -28,6 +28,8 @@ export interface ProviderConfig {
 export interface Settings {
   params: GenerationParams;
   provider: ProviderConfig;
+  /** 是否在本机加密保存 API Key（ADR-1 #8）。false = 不落盘，生成时手动输入。默认 true。 */
+  persistApiKey: boolean;
   schemaVersion: number;
 }
 

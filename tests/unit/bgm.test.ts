@@ -64,6 +64,21 @@ describe('generateBgmPrompt', () => {
     if (!r.ok) expect(r.error.code).toBe('NO_API_KEY');
   });
 
+  it('apiKey override（不保存模式）→ 用 override、不调 keyVault（kimi LOW 回归）', async () => {
+    const complete = vi.fn().mockResolvedValue('{"prompt":"x"}');
+    const getKey = vi.fn();
+    const hasApiKey = vi.fn().mockResolvedValue(false);
+    const deps = makeDeps({
+      hasApiKey,
+      getApiKeyForRequest: getKey,
+      createProvider: vi.fn().mockReturnValue({ complete }),
+    });
+    const r = await generateBgmPrompt({ story: STORY, language: 'zh', apiKey: 'sk-typed' }, deps);
+    expect(r.ok).toBe(true);
+    expect(getKey).not.toHaveBeenCalled();
+    expect(complete.mock.calls[0][0]).toMatchObject({ apiKey: 'sk-typed' });
+  });
+
   it('不自行持久化（不调用 saveCurrentProject）', async () => {
     const save = vi.fn().mockResolvedValue(ok(undefined));
     await generateBgmPrompt({ story: STORY, language: 'zh' }, makeDeps({ saveCurrentProject: save }));

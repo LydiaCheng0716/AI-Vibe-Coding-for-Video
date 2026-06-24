@@ -75,6 +75,14 @@ describe('storage: settings', () => {
     const got = await getSettings();
     expect(got.params.videoModel).toBe('generic'); // filled from defaults
     expect(got.provider.kind).toBe('anthropic');
+    expect(got.persistApiKey).toBe(true); // 旧数据缺该字段 → 默认 true
+  });
+
+  it('persistApiKey round-trips（不保存 Key 开关，ADR-1 #8）', async () => {
+    const s = defaultSettings();
+    s.persistApiKey = false;
+    await saveSettings(s);
+    expect((await getSettings()).persistApiKey).toBe(false);
   });
 });
 

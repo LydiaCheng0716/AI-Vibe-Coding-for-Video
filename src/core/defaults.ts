@@ -18,5 +18,10 @@ export function defaultProvider(): ProviderConfig {
 }
 
 export function defaultSettings(): Settings {
-  return { params: defaultParams(), provider: defaultProvider(), schemaVersion: SCHEMA_VERSION };
+  return {
+    params: defaultParams(),
+    provider: defaultProvider(),
+    persistApiKey: true,
+    schemaVersion: SCHEMA_VERSION,
+  };
 }

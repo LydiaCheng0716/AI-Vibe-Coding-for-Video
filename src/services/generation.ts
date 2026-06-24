@@ -72,6 +72,7 @@ async function callWithTimeout(
  */
 async function preflightProvider(
   deps: GenerationDeps,
+  apiKeyOverride?: string,
 ): Promise<Result<{ settings: Settings; apiKey: string }>> {
   const settings = await deps.getSettings();
   const provider = settings.provider;
@@ -81,11 +82,19 @@ async function preflightProvider(
     return err('INVALID_PROVIDER_CONFIG', 'Provider 配置无效，请到设置里检查类型与 baseUrl。');
   if (pv === 'MODEL_REQUIRED') return err('MODEL_REQUIRED', '请在设置里填写要使用的模型名。');
 
-  // 已配置且可解密 Key（ADR-1）。解密一次，经请求链瞬时传给 provider，不二次解密。
-  if (!(await deps.hasApiKey())) return err('NO_API_KEY', '请先到设置里配置 API Key 再生成。');
-  const apiKey = await deps.getApiKeyForRequest();
-  if (apiKey == null)
-    return err('KEY_DECRYPT_FAILED', '本地密钥已损坏，请到设置里重新输入 API Key。');
+  // Key 来源：①一次性 override（不保存 Key 模式，用户当次手输，ADR-1 #8，经请求链传递、不存储）；
+  // ②否则用已落盘的加密 Key（解密一次，经请求链瞬时传给 provider，不二次解密）。
+  let apiKey: string;
+  const override = apiKeyOverride?.trim();
+  if (override) {
+    apiKey = override;
+  } else {
+    if (!(await deps.hasApiKey())) return err('NO_API_KEY', '请先到设置里配置 API Key 再生成。');
+    const decrypted = await deps.getApiKeyForRequest();
+    if (decrypted == null)
+      return err('KEY_DECRYPT_FAILED', '本地密钥已损坏，请到设置里重新输入 API Key。');
+    apiKey = decrypted;
+  }
 
   // 目标域名已有 host 权限（ADR-5）
   const origin = originForProvider(provider);
@@ -108,7 +117,7 @@ function providerErr(e: unknown): Result<never> {
  * 不会重复执行 saveCurrentProject。前置校验任一失败立即返回，不发出站请求（api-spec §3.3）。
  */
 export async function generateStoryboardAttempt(
-  input: { story: string; params?: Settings['params'] },
+  input: { story: string; params?: Settings['params']; apiKey?: string },
   deps: GenerationDeps = realDeps,
 ): Promise<Result<Project>> {
   // 故事非空 / 长度边界（ADR-2，trim 后码点数）
@@ -118,7 +127,7 @@ export async function generateStoryboardAttempt(
   if (sv.code === 'STORY_TOO_LONG')
     return err('STORY_TOO_LONG', '故事太长了，请缩短到 5000 字以内。');
 
-  const pre = await preflightProvider(deps);
+  const pre = await preflightProvider(deps, input.apiKey);
   if (!pre.ok) return pre;
   const { settings, apiKey } = pre.data;
   const params = input.params ?? settings.params;
@@ -152,7 +161,7 @@ export async function generateStoryboardAttempt(
  * - 重试只重发 LLM 调用，不重复写 storage。
  */
 export async function generateStoryboard(
-  input: { story: string; params?: Settings['params'] },
+  input: { story: string; params?: Settings['params']; apiKey?: string },
   deps: GenerationDeps = realDeps,
   retryOpts: RetryOptions = {},
 ): Promise<Result<Project>> {
@@ -171,6 +180,8 @@ export interface BgmInput {
   story?: string;
   project?: Project;
   language: OutputLanguage;
+  /** 一次性 Key override（不保存 Key 模式，ADR-1 #8）。 */
+  apiKey?: string;
 }
 
 /**
@@ -187,7 +198,7 @@ export async function generateBgmPromptAttempt(
   if (!hasStory && !hasProject)
     return err('NO_GENERATION_INPUT', '请先输入故事或生成分镜，再生成 BGM 提示词。');
 
-  const pre = await preflightProvider(deps);
+  const pre = await preflightProvider(deps, input.apiKey);
   if (!pre.ok) return pre;
   const { settings, apiKey } = pre.data;
   const provider = settings.provider;

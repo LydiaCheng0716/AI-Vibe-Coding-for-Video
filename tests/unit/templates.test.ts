@@ -3,7 +3,9 @@ import {
   resolveTemplate,
   defaultTemplateIdFor,
   FALLBACK_TEMPLATE,
+  TEMPLATE_IDS,
 } from '../../src/prompts/templates';
+import type { VideoModel } from '../../src/core/models';
 import { buildStoryboardPrompt } from '../../src/prompts/storyboard';
 import { defaultParams } from '../../src/core/defaults';
 import type { GenerationParams } from '../../src/core/models';
@@ -45,6 +47,21 @@ describe('resolveTemplate 回退', () => {
     expect(r.template.id).toBe(FALLBACK_TEMPLATE.id);
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
+  });
+});
+
+describe('注册表一致性（遗留 #1）', () => {
+  it('TEMPLATE_IDS 每项都能解析且 id 自洽', () => {
+    expect(TEMPLATE_IDS.length).toBeGreaterThanOrEqual(2);
+    for (const id of TEMPLATE_IDS) {
+      const r = resolveTemplate(params({ templateId: id }));
+      expect(r.fellBack).toBe(false);
+      expect(r.template.id).toBe(id);
+    }
+  });
+  it('defaultTemplateIdFor 的输出都在注册表中', () => {
+    const models: VideoModel[] = ['generic', 'jimeng', 'keling', 'sora', 'runway'];
+    for (const m of models) expect(TEMPLATE_IDS).toContain(defaultTemplateIdFor(m));
   });
 });
 
