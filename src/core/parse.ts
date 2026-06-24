@@ -123,24 +123,27 @@ export function parseStoryboard(raw: string): ParseResult {
     characters.push({ id: `c${i + 1}`, name, appearance: c.appearance.trim() });
   });
 
-  // characterRefs 归一：name 命中（不分大小写）或 1-based 序号命中 → Character.id；否则丢弃
+  // characterRefs 归一：name 命中（不分大小写）/ 内部 id（cN）/ 1-based 序号 → Character.id；否则丢弃。
+  // 兼容模型常见输出 "c1"/"c2"（Codex LOW：原先只认名字/序号会静默丢弃 cN 引用）。
   const byName = new Map<string, string>();
+  const byId = new Set<string>();
   characters.forEach((c) => {
     if (c.name) byName.set(c.name.toLowerCase(), c.id);
+    byId.add(c.id);
   });
+  const idxToId = (n: number): string | null =>
+    Number.isInteger(n) && n >= 1 && n <= characters.length ? characters[n - 1].id : null;
   const resolveRef = (ref: unknown): string | null => {
     if (typeof ref === 'string') {
-      const hit = byName.get(ref.trim().toLowerCase());
+      const key = ref.trim();
+      const hit = byName.get(key.toLowerCase());
       if (hit) return hit;
-      const asIdx = Number(ref);
-      if (Number.isInteger(asIdx) && asIdx >= 1 && asIdx <= characters.length) {
-        return characters[asIdx - 1].id;
-      }
-      return null;
+      if (byId.has(key.toLowerCase())) return key.toLowerCase(); // 直接是内部 id cN
+      const cN = key.toLowerCase().match(/^c(\d+)$/); // "c1" → 第 1 个角色
+      if (cN) return idxToId(Number(cN[1]));
+      return idxToId(Number(key));
     }
-    if (typeof ref === 'number' && Number.isInteger(ref) && ref >= 1 && ref <= characters.length) {
-      return characters[ref - 1].id;
-    }
+    if (typeof ref === 'number') return idxToId(ref);
     return null;
   };
 

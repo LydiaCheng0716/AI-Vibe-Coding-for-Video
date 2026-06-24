@@ -3,6 +3,7 @@ import type { Settings, VideoModel, OutputLanguage, ShotDurationPref } from '../
 import { getSettings, saveSettings } from '../services/storage';
 import { saveApiKey, getMaskedApiKey, clearApiKey } from '../services/keyVault';
 import { defaultSettings } from '../core/defaults';
+import { originForProvider, hasHostPermission, requestHostPermission } from '../services/permissions';
 
 const VIDEO_MODELS: VideoModel[] = ['generic', 'jimeng', 'keling', 'sora', 'runway'];
 const ASPECTS = ['16:9', '9:16', '1:1'];
@@ -41,8 +42,27 @@ export default function SettingsPanel() {
   }
 
   async function onSaveSettings() {
-    const r = await saveSettings(settings);
-    setMsg(r.ok ? '设置已保存。' : r.error.message);
+    // 自定义 baseUrl（openai-compatible）需先获 host 权限（ADR-5(3)）：当场弹窗申请，
+    // 授权成功记入 grantedOrigins；内置域名（openai/anthropic）已静态授权，无需申请。
+    let next = settings;
+    let warn: string | null = null;
+    const p = settings.provider;
+    if (p.kind === 'openai-compatible' && p.baseUrl && p.baseUrl.trim()) {
+      const origin = originForProvider(p);
+      if (origin && !(await hasHostPermission(origin))) {
+        const granted = await requestHostPermission(origin);
+        if (granted) {
+          const grantedOrigins = Array.from(new Set([...(p.grantedOrigins ?? []), origin]));
+          next = { ...settings, provider: { ...p, grantedOrigins } };
+        } else {
+          warn = `未获授权访问 ${origin}，生成前需在弹窗中点「允许」。`;
+        }
+      }
+    }
+    const r = await saveSettings(next);
+    if (next !== settings) setSettings(next);
+    if (!r.ok) setMsg(r.error.message);
+    else setMsg(warn ? `设置已保存，但${warn}` : '设置已保存。');
   }
 
   async function onSaveKey() {

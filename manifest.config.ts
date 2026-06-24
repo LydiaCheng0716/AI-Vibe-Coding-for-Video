@@ -15,4 +15,8 @@ export default defineManifest({
   background: { service_worker: 'src/background.ts', type: 'module' },
   permissions: ['sidePanel', 'storage'],
   host_permissions: ['https://api.openai.com/*', 'https://api.anthropic.com/*'],
+  // ADR-5(3)(4a) 策略 A（Spike #3 已实测 chrome.permissions.request 弹窗授权可行）：
+  // 自定义 baseUrl 的任意 https 域名走「可选权限池」，保存时逐域名当场弹窗申请；
+  // 放进 optional 不等于安装即授权，每个域名仍需用户点允许。静态 host 红线（禁 <all_urls>）不变。
+  optional_host_permissions: ['https://*/*'],
 });
