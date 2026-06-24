@@ -2,6 +2,8 @@
 
 多 Agent 协作开发工作流，Human PO 全程参与关键决策。
 
+> **首个产品 StoryBoard AI — MVP 已完成。** TASK-001~009（九个任务）已全部实现、过三道质量门（CI + Kimi 外部评审 + Codex 终审）并合并到 `develop`。安装与使用见下方 [StoryBoard AI — 安装与使用](#storyboard-ai--安装与使用)。
+
 ---
 
 ## 核心理念
@@ -84,6 +86,68 @@ AI-Vibe-Coding-for-Video/
 ```
 
 > **首个产品 StoryBoard AI 是纯客户端 Chrome MV3 扩展，没有 `frontend/`+`backend/` 两层、没有数据库。** 实现代码落地后的扩展内部结构（`src/sidepanel`、`src/services`、`src/core` 等）以 [docs/architecture.md](docs/architecture.md) 第 3 节为准。下方「推荐技术栈」是工厂的**通用默认**，具体项目按 `architecture.md` 调整。
+
+---
+
+## StoryBoard AI — 安装与使用
+
+StoryBoard AI 是一个 Chrome 侧边栏插件：把口语化故事自动转成结构化分镜、AI 视频提示词和 BGM 提示词。**纯客户端、BYOK（自带 LLM Key）、无账号、无后端**——所有数据存本地，生成时只把内容发往你自己选择的 LLM 厂商。
+
+### 当前能力（MVP）
+
+| 能力 | 说明 | 任务 |
+|------|------|------|
+| 故事输入 | 侧边栏输入/粘贴故事，草稿自动保存，长度校验（10–5000 字） | TASK-001 |
+| BYOK 设置 | Provider（OpenAI 兼容 / Anthropic）、baseUrl、模型名、API Key（AES-GCM 本地加密）；生成参数 | TASK-002 |
+| 分镜生成 | 故事 → 直连 LLM → 3–10 个结构化镜头（概要/景别/运镜/时长/完整提示词） | TASK-003 |
+| 模板适配 | 通用英文电影感 / 即梦·可灵中文两套模板，按目标视频模型套用 | TASK-004 |
+| 人物一致性 | 识别角色、统一外观描述并注入相关镜头，减少跨镜头漂移 | TASK-005 |
+| 卡片交互 | 按序查看、编辑单镜头提示词、单镜头复制 | TASK-006 |
+| BGM 提示词 | 基于故事或分镜生成适配 Suno/海绵音乐的 BGM 提示词并复制 | TASK-007 |
+| 导出 | Markdown / JSON / 纯文本（含编辑后内容与可选 BGM），复制或下载 | TASK-008 |
+| 失败处理 | 全局并发锁（并发=1，分镜与 BGM 共享）、瞬时错误退避重试、加载态 | TASK-009 |
+
+### 安装（开发者模式 load unpacked）
+
+```bash
+npm ci
+npm run build      # 产物输出到 dist/
+```
+
+1. Chrome 打开 `chrome://extensions`，右上角开启「开发者模式」。
+2. 点「加载已解压的扩展程序」，选择项目下的 `dist/` 目录。
+3. 点击工具栏的 StoryBoard AI 图标打开侧边栏（`chrome.sidePanel`）。
+
+> 开发时也可 `npm run dev`（Vite + HMR）。
+
+### 使用
+
+1. **配置 BYOK（设置页）**：选 Provider。MVP 已实测 **OpenAI 兼容**（如 Kimi/Moonshot、DeepSeek、智谱等）；填 `baseUrl`（必须 `https://`）、你账号可用的**模型名**（不内置默认值）、API Key。
+   - 用**自定义 baseUrl** 时，保存会**弹窗申请该域名的访问权限**（MV3 动态 host 授权），点「允许」后才能生成。
+   - Anthropic 适配器已实现但浏览器直连 CORS 未实测，MVP 优先用 OpenAI 兼容。
+2. **输入故事** → 点「生成分镜」→ 得到 3–10 个镜头卡片。
+3. **编辑/复制**：编辑某镜头提示词只改该镜头（标记为已编辑，不被后续注入覆盖）；单镜头一键复制。
+4. **BGM**：点「生成 BGM」得到配乐提示词并复制。
+5. **导出**：选 Markdown / JSON / 纯文本，复制或下载（不含 API Key 与 Provider 凭据）。
+
+### 安全与隐私
+
+- API Key 用 WebCrypto **AES-GCM 本地加密**，密钥不可导出存 IndexedDB，密文存 `chrome.storage.local`，**禁用 `storage.sync`**，UI 仅显示末 4 位（ADR-1）。
+- 本地加密能降低硬盘被读取时的泄露风险，但**无法防护已被恶意软件控制的浏览器/设备**——请只在信任的电脑上保存 Key。
+- 生成时故事/参数/提示词会发往**你自己选择的 LLM 厂商**（用你的 Key），受该厂商隐私政策约束（BYOK 固有前提）。
+
+### 范围外（MVP 暂不做）
+
+直接调用视频/音乐生成 API、视频拼接剪辑、首尾帧图片、单镜头 AI 重生成、云端同步/账号体系/订阅、模板市场、历史项目管理。详见 [docs/PRD.md](docs/PRD.md)。
+
+### 开发命令
+
+```bash
+npm run dev     # 开发（Vite + HMR）
+npm run lint    # 类型检查（tsc --noEmit）
+npm run test    # 单元测试（Vitest，173 用例）
+npm run build   # 类型检查 + 生产构建（dist/）
+```
 
 ---
 
