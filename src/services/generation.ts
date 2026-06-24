@@ -15,6 +15,7 @@ import { STORYBOARD_TIMEOUT_MS, MAX_OUTPUT_TOKENS } from '../core/config';
 import { validateStory, validateProviderConfig } from '../core/validate';
 import { buildStoryboardPrompt } from '../prompts/storyboard';
 import { parseStoryboard, buildProject } from '../core/parse';
+import { injectCharacterConsistency } from '../core/characters';
 import { ProviderCallError, createProvider, type LlmProvider } from './llm/provider';
 import { hasHostPermission, originForProvider } from './permissions';
 import { getSettings, saveCurrentProject } from './storage';
@@ -121,7 +122,9 @@ export async function generateStoryboardAttempt(
   const parsed = parseStoryboard(raw);
   if (!parsed.ok) return err('BAD_RESPONSE_FORMAT', '生成结果格式异常，请重试。');
 
-  return ok(buildProject(input.story, params, parsed));
+  // 人物一致性注入（TASK-005）：把引用角色的统一外观注入对应镜头 prompt。
+  const project = injectCharacterConsistency(buildProject(input.story, params, parsed));
+  return ok(project);
 }
 
 /**

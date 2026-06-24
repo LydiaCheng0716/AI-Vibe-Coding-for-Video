@@ -5,6 +5,7 @@ import type { GenerationParams } from '../core/models';
 import { SHOTS_MIN, SHOTS_MAX } from '../core/parse';
 import { resolveTemplate } from './templates';
 import { clampField } from './sanitize';
+import { characterInstruction } from './characters';
 
 export interface PromptPair {
   system: string;
@@ -32,8 +33,9 @@ export function buildStoryboardPrompt(story: string, params: GenerationParams): 
     `要求：`,
     `- 输出 ${SHOTS_MIN}–${SHOTS_MAX} 个镜头；镜头数量根据故事繁简自行决定，但必须在该区间内。`,
     `- 每个镜头必须包含：summary（概要）、shotSize（景别）、cameraMovement（运镜）、durationSuggestion（时长建议）、prompt（完整视频提示词，含正向描述与负面提示词）。`,
-    `- 若故事出现明确人物，在 characters 输出统一外观描述并用 characterRefs 引用；无明确人物则 characters 为空数组，不要编造。`,
     `- summary / shotSize / cameraMovement / durationSuggestion 等可读字段用 ${lang} 输出。`,
+    '',
+    characterInstruction(),
     '',
     template.shotPromptInstruction(params),
     '',
