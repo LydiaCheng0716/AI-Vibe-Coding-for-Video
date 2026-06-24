@@ -39,10 +39,10 @@ const realDeps: GenerationDeps = {
   saveCurrentProject,
 };
 
-/** 带超时的单次 provider 调用（重试由 009 在外层负责）。 */
+/** 带超时的单次 provider 调用（重试由 009 在外层负责）。明文 Key 经请求链瞬时传入。 */
 async function callWithTimeout(
   provider: LlmProvider,
-  args: { system: string; user: string; model: string },
+  args: { system: string; user: string; model: string; apiKey: string },
   timeoutMs: number,
 ): Promise<string> {
   const ctrl = new AbortController();
@@ -52,6 +52,7 @@ async function callWithTimeout(
       system: args.system,
       user: args.user,
       model: args.model,
+      apiKey: args.apiKey,
       maxTokens: MAX_OUTPUT_TOKENS,
       signal: ctrl.signal,
     });
@@ -61,10 +62,11 @@ async function callWithTimeout(
 }
 
 /**
- * 生成完整分镜。前置校验任一失败立即返回，不发出站请求（api-spec §3.3）。
- * 注意：本函数不持全局锁、不自动重试——那是 TASK-009 的职责。
+ * 单次生成尝试：前置校验 → prompt → provider → ADR-6 解析，**不落库**。
+ * 这是给 TASK-009 包裹（全局锁 + 失败退避重试）的最小单元——重试只会重发 LLM 调用，
+ * 不会重复执行 saveCurrentProject。前置校验任一失败立即返回，不发出站请求（api-spec §3.3）。
  */
-export async function generateStoryboard(
+export async function generateStoryboardAttempt(
   input: { story: string; params?: Settings['params'] },
   deps: GenerationDeps = realDeps,
 ): Promise<Result<Project>> {
@@ -86,11 +88,10 @@ export async function generateStoryboard(
   if (pv === 'MODEL_REQUIRED')
     return err('MODEL_REQUIRED', '请在设置里填写要使用的模型名。');
 
-  // 5. 已配置且可解密 Key（ADR-1）
+  // 5. 已配置且可解密 Key（ADR-1）。解密一次，经请求链瞬时传给 provider，不二次解密。
   if (!(await deps.hasApiKey())) return err('NO_API_KEY', '请先到设置里配置 API Key 再生成。');
-  // 仅判定「可解密」，不把明文绑定到具名变量（ADR-1 明文最小作用域）；
-  // 解密失败时 keyVault 已清理坏状态并返回 null。
-  if ((await deps.getApiKeyForRequest()) == null)
+  const apiKey = await deps.getApiKeyForRequest();
+  if (apiKey == null)
     return err('KEY_DECRYPT_FAILED', '本地密钥已损坏，请到设置里重新输入 API Key。');
 
   // 6. 目标域名已有 host 权限（ADR-5）
@@ -106,7 +107,7 @@ export async function generateStoryboard(
   try {
     raw = await callWithTimeout(
       deps.createProvider(provider),
-      { system, user, model: provider.model },
+      { system, user, model: provider.model, apiKey },
       STORYBOARD_TIMEOUT_MS,
     );
   } catch (e) {
@@ -118,8 +119,21 @@ export async function generateStoryboard(
   const parsed = parseStoryboard(raw);
   if (!parsed.ok) return err('BAD_RESPONSE_FORMAT', '生成结果格式异常，请重试。');
 
-  const project = buildProject(input.story, params, parsed);
-  const saved = await deps.saveCurrentProject(project);
+  return ok(buildProject(input.story, params, parsed));
+}
+
+/**
+ * 生成完整分镜并落库。= 单次尝试 + saveCurrentProject。
+ * 注意：本函数不持全局锁、不自动重试——那是 TASK-009 的职责（009 会在 attempt 上加锁/重试，
+ * 成功后再落库一次）。
+ */
+export async function generateStoryboard(
+  input: { story: string; params?: Settings['params'] },
+  deps: GenerationDeps = realDeps,
+): Promise<Result<Project>> {
+  const attempt = await generateStoryboardAttempt(input, deps);
+  if (!attempt.ok) return attempt;
+  const saved = await deps.saveCurrentProject(attempt.data);
   if (!saved.ok) return saved;
-  return ok(project);
+  return ok(attempt.data);
 }

@@ -27,7 +27,7 @@ function isUnsupportedParam(status: number, body: string): boolean {
 
 function buildBody(req: CompleteRequest, withResponseFormat: boolean): Record<string, unknown> {
   const body: Record<string, unknown> = {
-    model: req.model,
+    model: req.model.trim(), // 去空格，避免厂商 400（kimi LOW）
     messages: [
       { role: 'system', content: req.system },
       { role: 'user', content: req.user },
@@ -43,7 +43,8 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
 
   async function post(req: CompleteRequest, withResponseFormat: boolean): Promise<Response> {
     // 明文 Key 只在本次请求构造的瞬间存在，不赋值给任何持久引用（ADR-1）。
-    const apiKey = await getApiKeyForRequest();
+    // 优先用编排层已解密并传入的 Key，避免二次解密（ADR-1 最小作用域）。
+    const apiKey = req.apiKey ?? (await getApiKeyForRequest());
     if (!apiKey) throw new ProviderCallError('NO_API_KEY', '未配置 API Key。', false);
     return fetch(url, {
       method: 'POST',
@@ -84,8 +85,17 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
       } catch (e) {
         throw mapFetchError(e);
       }
-      const content = (json as { choices?: Array<{ message?: { content?: unknown } }> })?.choices?.[0]
-        ?.message?.content;
+      const choice = (
+        json as {
+          choices?: Array<{ message?: { content?: unknown }; finish_reason?: string }>;
+        }
+      )?.choices?.[0];
+      // 截断检测（ADR-6(4)）：finish_reason=length 说明输出被 max_tokens 截断，
+      // 即便恰好可解析也按格式异常处理，避免吞掉缺失镜头。
+      if (choice?.finish_reason === 'length') {
+        throw new ProviderCallError('BAD_RESPONSE_FORMAT', '生成结果被截断，请重试。', false);
+      }
+      const content = choice?.message?.content;
       if (typeof content !== 'string') {
         throw new ProviderCallError('BAD_RESPONSE_FORMAT', '生成结果格式异常，请重试。', false);
       }

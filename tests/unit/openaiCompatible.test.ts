@@ -58,6 +58,26 @@ describe('openaiCompatible: 请求形状', () => {
     const out = await createOpenAiCompatibleProvider().complete(req);
     expect(out).toBe('{"shots":[1]}');
   });
+
+  it('finish_reason=length（截断）→ BAD_RESPONSE_FORMAT（ADR-6(4)）', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: '{' }, finish_reason: 'length' }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(createOpenAiCompatibleProvider().complete(req)).rejects.toMatchObject({
+      code: 'BAD_RESPONSE_FORMAT',
+    });
+  });
+
+  it('优先使用传入的 apiKey，不二次解密（ADR-1）', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okCompletion());
+    await createOpenAiCompatibleProvider().complete({ ...req, apiKey: 'sk-passed-in' });
+    const headers = (fetchSpy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer sk-passed-in');
+    expect(getApiKeyForRequest).not.toHaveBeenCalled();
+  });
 });
 
 describe('openaiCompatible: response_format 兼容回退（api-spec §4.2）', () => {

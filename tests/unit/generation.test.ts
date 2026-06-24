@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { generateStoryboard, type GenerationDeps } from '../../src/services/generation';
+import {
+  generateStoryboard,
+  generateStoryboardAttempt,
+  type GenerationDeps,
+} from '../../src/services/generation';
 import { ProviderCallError, type LlmProvider } from '../../src/services/llm/provider';
 import { ok, type Settings } from '../../src/core/models';
 import { defaultSettings } from '../../src/core/defaults';
@@ -137,6 +141,25 @@ describe('generateStoryboard: 成功与出站失败', () => {
     const deps = makeDeps({ createProvider: vi.fn().mockReturnValue(provider) });
     const r = await generateStoryboard({ story: STORY }, deps);
     if (!r.ok) expect(r.error.code).toBe('BAD_RESPONSE_FORMAT');
+  });
+
+  it('generateStoryboardAttempt 成功但【不落库】（009 重试接缝）', async () => {
+    const save = vi.fn().mockResolvedValue(ok(undefined));
+    const r = await generateStoryboardAttempt({ story: STORY }, makeDeps({ saveCurrentProject: save }));
+    expect(r.ok).toBe(true);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('apiKey 解密一次并透传给 provider（不二次解密）', async () => {
+    const complete = vi.fn().mockResolvedValue(goodShots());
+    const getKey = vi.fn().mockResolvedValue('sk-once');
+    const deps = makeDeps({
+      getApiKeyForRequest: getKey,
+      createProvider: vi.fn().mockReturnValue({ complete }),
+    });
+    await generateStoryboard({ story: STORY }, deps);
+    expect(getKey).toHaveBeenCalledTimes(1);
+    expect(complete.mock.calls[0][0]).toMatchObject({ apiKey: 'sk-once' });
   });
 
   it('storage 写失败 → STORAGE_WRITE_FAILED', async () => {

@@ -6,18 +6,23 @@ import { SCHEMA_VERSION } from './config';
 
 export const SHOTS_MIN = 3;
 export const SHOTS_MAX = 10;
+/** 数组上界：抵御异常/恶意 LLM 输出导致的内存/CPU 放大（kimi MED）。超出部分丢弃。 */
+export const CHARACTERS_MAX = 50;
+export const CHAR_REFS_MAX = 20;
 
 /** 解析结果：成功给结构化数据，失败只给原因（由调用方转成 BAD_RESPONSE_FORMAT）。 */
 export type ParseResult =
-  | { ok: true; characters: Character[]; shots: Shot[]; bgmPrompt?: string }
+  | { ok: true; characters: Character[]; shots: Shot[] }
   | { ok: false; reason: string };
 
 // ---- 解析接受范围（ADR-6(2)）----
 
-/** 提取第一个 ```json ... ``` 或 ``` ... ``` 代码块内容。 */
+/** 提取代码块内容：优先 ```json ... ```（ADR-6 原文），失败再退化到任意 ``` ... ```。 */
 function extractFencedJson(text: string): string | null {
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return m ? m[1].trim() : null;
+  const labeled = text.match(/```json\s*([\s\S]*?)```/i);
+  if (labeled) return labeled[1].trim();
+  const generic = text.match(/```\s*([\s\S]*?)```/);
+  return generic ? generic[1].trim() : null;
 }
 
 /**
@@ -108,9 +113,9 @@ export function parseStoryboard(raw: string): ParseResult {
     return { ok: false, reason: `镜头数 ${rawShots.length} 不在 [${SHOTS_MIN},${SHOTS_MAX}]` };
   }
 
-  // characters：可缺省/空数组；每项 appearance 非空，name 允许 null（不强行编造）
+  // characters：可缺省/空数组；每项 appearance 非空，name 允许 null（不强行编造）；上限保护
   const characters: Character[] = [];
-  const rawChars = Array.isArray(obj.characters) ? obj.characters : [];
+  const rawChars = (Array.isArray(obj.characters) ? obj.characters : []).slice(0, CHARACTERS_MAX);
   rawChars.forEach((c, i) => {
     if (!isObj(c)) return;
     if (!nonEmptyStr(c.appearance)) return; // appearance 必须有意义
@@ -146,7 +151,7 @@ export function parseStoryboard(raw: string): ParseResult {
     for (const f of SHOT_FIELDS) {
       if (!nonEmptyStr(s[f])) return { ok: false, reason: `镜头 ${i + 1} 缺字段 ${f}` };
     }
-    const refsIn = Array.isArray(s.characterRefs) ? s.characterRefs : [];
+    const refsIn = (Array.isArray(s.characterRefs) ? s.characterRefs : []).slice(0, CHAR_REFS_MAX);
     const characterRefs = Array.from(
       new Set(refsIn.map(resolveRef).filter((x): x is string => x !== null)),
     );
@@ -163,8 +168,8 @@ export function parseStoryboard(raw: string): ParseResult {
     });
   }
 
-  const bgm = isObj(obj.bgm) && nonEmptyStr(obj.bgm.prompt) ? obj.bgm.prompt.trim() : undefined;
-  return { ok: true, characters, shots, bgmPrompt: bgm };
+  // 注：分镜生成 prompt 不请求 bgm；BGM 由 TASK-007 独立服务生成。此处不解析 bgm。
+  return { ok: true, characters, shots };
 }
 
 /** 把解析结果组装成完整 Project（供 generation.ts 落库）。 */

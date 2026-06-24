@@ -115,6 +115,22 @@ describe('parseStoryboard: 角色与 characterRefs', () => {
     if (r.ok) expect(r.shots[0].characterRefs).toEqual(['c1']);
   });
 
+  it('characters 超上界（50）被截断', () => {
+    const many = Array.from({ length: 80 }, (_, i) => ({ name: `n${i}`, appearance: `a${i}` }));
+    const r = parseStoryboard(JSON.stringify({ characters: many, shots: threeShots }));
+    if (r.ok) expect(r.characters.length).toBe(50);
+  });
+
+  it('单镜头 characterRefs 超上界（20）被截断', () => {
+    const chars = Array.from({ length: 30 }, (_, i) => ({ name: `n${i}`, appearance: `a${i}` }));
+    const refs = Array.from({ length: 30 }, (_, i) => `n${i}`);
+    const r = parseStoryboard(
+      JSON.stringify({ characters: chars, shots: [shot({ characterRefs: refs }), shot(), shot()] }),
+    );
+    // 取前 20 个 ref，去重后归一；上界保证不超过 20
+    if (r.ok) expect(r.shots[0].characterRefs.length).toBeLessThanOrEqual(20);
+  });
+
   it('appearance 空的角色被丢弃', () => {
     const raw = JSON.stringify({
       characters: [{ name: '空', appearance: '   ' }],
