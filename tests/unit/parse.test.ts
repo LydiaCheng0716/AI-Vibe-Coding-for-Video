@@ -124,6 +124,18 @@ describe('parseStoryboard: 角色与 characterRefs', () => {
     if (r.ok) expect(r.shots[0].characterRefs).toEqual(['c1']);
   });
 
+  it('characterRefs 兼容 "cN" 内部 id 形式（Codex LOW）', () => {
+    const raw = JSON.stringify({
+      characters: [
+        { name: '甲', appearance: 'a' },
+        { name: '乙', appearance: 'b' },
+      ],
+      shots: [shot({ characterRefs: ['c2'] }), shot(), shot()],
+    });
+    const r = parseStoryboard(raw);
+    if (r.ok) expect(r.shots[0].characterRefs).toEqual(['c2']);
+  });
+
   it('对不上的 characterRefs 丢弃而非报错', () => {
     const raw = JSON.stringify({
       characters: [{ name: '小明', appearance: '红衣' }],

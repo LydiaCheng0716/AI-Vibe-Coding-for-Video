@@ -53,16 +53,17 @@ export function mapHttpStatus(status: number): { code: ErrorCode; retriable: boo
 
 /**
  * fetch 抛出的异常映射。AbortError（超时）→ NETWORK_ERROR（可重试）。
- * CORS 与普通网络失败在浏览器里都表现为 TypeError，JS 层无法 100% 区分；
- * 启发式：TypeError 且 message 含 CORS/cross-origin/Failed to fetch 时按 CORS_BLOCKED
- * （不可重试，引导换 Provider，ADR-5(5)）；否则按 NETWORK_ERROR。host 权限已在请求前判定。
+ * CORS 与普通网络/DNS/连接失败在浏览器里都常表现为 `TypeError: Failed to fetch`，JS 层无法
+ * 可靠区分（Codex MED）。为不吞掉 ADR-3 的网络失败重试：仅在 message 明确含 CORS/cross-origin
+ * 时判 CORS_BLOCKED（不重试，引导换 Provider，ADR-5(5)）；泛化的 "failed to fetch" 一律按
+ * NETWORK_ERROR（可重试）——若实为 CORS，重试耗尽后仍会给出可读失败提示。host 权限已在请求前判定。
  */
 export function mapFetchError(e: unknown): ProviderCallError {
   if (e instanceof ProviderCallError) return e;
   if (e instanceof Error && e.name === 'AbortError') {
     return new ProviderCallError('NETWORK_ERROR', '请求超时，请重试。', true);
   }
-  if (e instanceof TypeError && /cors|cross-origin|failed to fetch/i.test(e.message)) {
+  if (e instanceof TypeError && /cors|cross-origin/i.test(e.message)) {
     return new ProviderCallError(
       'CORS_BLOCKED',
       '该服务可能不支持在浏览器插件中直接调用，请改用受支持的 Provider 或换一个 baseUrl。',

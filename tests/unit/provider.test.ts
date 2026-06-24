@@ -26,9 +26,20 @@ describe('mapFetchError', () => {
     e.name = 'AbortError';
     expect(mapFetchError(e)).toMatchObject({ code: 'NETWORK_ERROR', retriable: true });
   });
-  it('CORS TypeError → CORS_BLOCKED 不重试（ADR-5(5)）', () => {
-    const e = mapFetchError(new TypeError('Failed to fetch'));
-    expect(e).toMatchObject({ code: 'CORS_BLOCKED', retriable: false });
+  it('显式 CORS message → CORS_BLOCKED 不重试（ADR-5(5)）', () => {
+    expect(mapFetchError(new TypeError('blocked by CORS policy'))).toMatchObject({
+      code: 'CORS_BLOCKED',
+      retriable: false,
+    });
+    expect(mapFetchError(new TypeError('cross-origin request blocked'))).toMatchObject({
+      code: 'CORS_BLOCKED',
+    });
+  });
+  it('泛化 Failed to fetch → NETWORK_ERROR 可重试（Codex MED：不吞网络重试）', () => {
+    expect(mapFetchError(new TypeError('Failed to fetch'))).toMatchObject({
+      code: 'NETWORK_ERROR',
+      retriable: true,
+    });
   });
   it('普通网络异常 → NETWORK_ERROR', () => {
     expect(mapFetchError(new Error('boom'))).toMatchObject({ code: 'NETWORK_ERROR', retriable: true });
