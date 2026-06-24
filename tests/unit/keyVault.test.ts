@@ -76,6 +76,13 @@ describe('keyVault (BYOK / ADR-1)', () => {
     expect(await getApiKeyForRequest()).toBeNull();
   });
 
+  it('clearApiKey 幂等：无存储时也安全返回 ok（支撑「关闭保存」无条件清盘，Codex HIGH）', async () => {
+    expect(await hasApiKey()).toBe(false);
+    const r = await clearApiKey();
+    expect(r.ok).toBe(true);
+    expect(await hasApiKey()).toBe(false);
+  });
+
   it('concurrent saves are serialized → ciphertext stays decryptable (Codex HIGH)', async () => {
     // 并发两次保存不同 Key；互斥锁保证最终密文可被解出，且为其中一个完整 Key。
     await Promise.all([saveApiKey('sk-AAAAAAAAAA1111'), saveApiKey('sk-BBBBBBBBBB2222')]);

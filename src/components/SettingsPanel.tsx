@@ -59,9 +59,10 @@ export default function SettingsPanel() {
         }
       }
     }
-    // 关闭「保存 Key」→ 清掉已落盘的 Key，确保磁盘无残留（ADR-1 #8）。
+    // 关闭「保存 Key」→ 无条件清盘（clearApiKey 幂等），确保磁盘无残留（ADR-1 #8）。
+    // 不用 maskedKey 门控：它是异步 UI 状态，可能未加载/加载失败，但磁盘仍可能有密文（Codex HIGH）。
     // 清盘失败必须中断并提示，不能谎称已清（kimi MED）。
-    if (!settings.persistApiKey && maskedKey) {
+    if (!settings.persistApiKey) {
       const cleared = await clearApiKey();
       if (!cleared.ok) {
         setMsg(cleared.error.message);
