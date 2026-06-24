@@ -1,4 +1,5 @@
 import { STORY_MIN, STORY_MAX, STORY_SOFT_MIN } from './config';
+import type { ProviderConfig } from './models';
 
 export type StoryValidationCode =
   | 'OK'
@@ -47,4 +48,29 @@ export function storyValidationMessage(v: StoryValidation): string | null {
     case 'OK':
       return v.soft ? '内容较少，分镜可能比较笼统。' : null;
   }
+}
+
+// ---- Provider 配置校验（ADR-4 / ADR-5；generation 前置校验第 3 步）----
+
+export type ProviderConfigCode = 'OK' | 'INVALID_PROVIDER_CONFIG' | 'MODEL_REQUIRED';
+
+/**
+ * 校验 Provider 配置：kind 合法、openai-compatible 的 baseUrl 必须 https://（合法 URL）、
+ * model 非空。anthropic 忽略 baseUrl（固定官方域名）。纯函数。
+ */
+export function validateProviderConfig(p: ProviderConfig | undefined | null): ProviderConfigCode {
+  if (!p || (p.kind !== 'openai-compatible' && p.kind !== 'anthropic')) {
+    return 'INVALID_PROVIDER_CONFIG';
+  }
+  if (p.kind === 'openai-compatible' && p.baseUrl != null && p.baseUrl !== '') {
+    let url: URL;
+    try {
+      url = new URL(p.baseUrl);
+    } catch {
+      return 'INVALID_PROVIDER_CONFIG';
+    }
+    if (url.protocol !== 'https:') return 'INVALID_PROVIDER_CONFIG';
+  }
+  if (!p.model || p.model.trim() === '') return 'MODEL_REQUIRED';
+  return 'OK';
 }

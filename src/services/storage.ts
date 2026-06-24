@@ -1,7 +1,7 @@
 // Storage Service（chrome.storage.local）：设置 / 草稿。对齐 api-spec 3.2。
 // 所有写操作返回 Result<void>，写失败映射 STORAGE_WRITE_FAILED（ARCH-LOW-001），不静默丢数据。
 import { STORAGE_KEYS, SCHEMA_VERSION } from '../core/config';
-import { ok, err, type Result, type Settings } from '../core/models';
+import { ok, err, type Result, type Settings, type Project } from '../core/models';
 import { defaultSettings } from '../core/defaults';
 
 interface DraftRecord {
@@ -62,4 +62,17 @@ export async function getSettings(): Promise<Settings> {
 
 export async function saveSettings(settings: Settings): Promise<Result<void>> {
   return write({ [STORAGE_KEYS.settings]: { ...settings, schemaVersion: SCHEMA_VERSION } });
+}
+
+// ---- 当前分镜项目（TASK-003/004/005/006/007/008 共用）----
+
+export async function getCurrentProject(): Promise<Project | null> {
+  const p = await read<Project>(STORAGE_KEYS.currentProject);
+  return p ?? null;
+}
+
+export async function saveCurrentProject(project: Project): Promise<Result<void>> {
+  return write({
+    [STORAGE_KEYS.currentProject]: { ...project, schemaVersion: SCHEMA_VERSION },
+  });
 }
