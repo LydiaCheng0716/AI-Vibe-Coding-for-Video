@@ -48,4 +48,28 @@ describe('withLlmLock（并发=1，ADR-3）', () => {
     expect(cb).toHaveBeenCalledWith(false);
     unsub();
   });
+
+  it('订阅时同步当前态（避免错过 busy=true）', async () => {
+    const d = deferred<void>();
+    const first = withLlmLock(async () => {
+      await d.promise;
+      return ok(1);
+    });
+    const cb = vi.fn();
+    const unsub = subscribeLlmBusy(cb); // 此刻 busy=true
+    expect(cb).toHaveBeenCalledWith(true);
+    unsub();
+    d.resolve();
+    await first;
+  });
+
+  it('订阅者抛异常不会卡住锁（finally 仍复位）', async () => {
+    const unsub = subscribeLlmBusy(() => {
+      throw new Error('subscriber boom');
+    });
+    const r = await withLlmLock(async () => ok(1));
+    expect(r.ok).toBe(true);
+    expect(isLlmBusy()).toBe(false);
+    unsub();
+  });
 });

@@ -53,6 +53,16 @@ describe('withRetry（ADR-3）', () => {
     expect(delays).toEqual([5000, 5000]);
   });
 
+  it('retryAfterMs 超 maxDelay → 封顶（防恶意 Retry-After）', async () => {
+    const delays: number[] = [];
+    const sleep = vi.fn(async (ms: number) => {
+      delays.push(ms);
+    });
+    const attempt = vi.fn(async () => err('RATE_LIMITED', 'x', true, 99_999_999));
+    await withRetry(attempt, { sleep, jitter: noJitter, maxDelayMs: 60_000 });
+    expect(delays).toEqual([60_000, 60_000]);
+  });
+
   it('首次即成功 → 不 sleep', async () => {
     const sleep = vi.fn();
     const attempt = vi.fn(async () => ok('done'));
