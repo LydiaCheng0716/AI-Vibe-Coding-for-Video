@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Project, Shot } from '../core/models';
 import { updateShotPrompt, replaceShot, updateShotFirstFrame } from '../services/storage';
-import { rewriteShot, generateFirstFrame } from '../services/generation';
+import { rewriteShot, generateFirstFrame, translateText } from '../services/generation';
 import type { RewriteMode } from '../prompts/rewrite';
 import { copyToClipboard } from '../services/clipboard';
 import { shotSizeOptions, cameraMovementOptions, DURATION_OPTIONS, withCurrent } from '../core/shotParams';
@@ -27,6 +27,10 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(shot.prompt);
   const [draftEn, setDraftEn] = useState(shot.promptEn ?? ''); // 双语英文版编辑草稿（Issue #41）
+  // 双语自动翻译同步（Issue #53）：默认关，避免误触翻译消耗额度。
+  const [autoSync, setAutoSync] = useState(false);
+  const [translating, setTranslating] = useState<'zh' | 'en' | null>(null);
+  const translatingRef = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // 单镜头迭代（Issue #30）
@@ -43,6 +47,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
   const firstFramingRef = useRef(false);
 
   async function onSave() {
+    if (translatingRef.current) return; // 翻译进行中不保存，避免存到翻译前的旧值（同步拦截竞态）
     setSaving(true);
     // 双语：同时保存中文 prompt 与英文 promptEn，避免改了中文而英文残留旧版（Codex P2）。
     if (shot.promptEn !== undefined) {
@@ -194,6 +199,32 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
     }
   }
 
+  // 双语：编辑某一边失焦 → 自动翻译另一边（Issue #53）。失败不覆盖任一框，仅提示重试。
+  async function onTranslate(from: 'zh' | 'en') {
+    if (shot.promptEn === undefined || !autoSync || busy || translatingRef.current) return;
+    const text = from === 'zh' ? draft : draftEn;
+    if (!text.trim()) return;
+    const target: 'zh' | 'en' = from === 'zh' ? 'en' : 'zh';
+    const before = target === 'en' ? draftEn : draft; // 目标框翻译前快照
+    translatingRef.current = true;
+    setTranslating(target);
+    setNotice(null);
+    try {
+      const apiKey = persistApiKey ? undefined : tempKey.trim() || undefined;
+      const r = await translateText({ text, targetLang: target, apiKey });
+      if (r.ok) {
+        // 仅当目标框自请求发起后未被用户改动时才写入，避免覆盖用户在途编辑（Codex P2）。
+        if (target === 'en') setDraftEn((cur) => (cur === before ? r.data : cur));
+        else setDraft((cur) => (cur === before ? r.data : cur));
+      } else {
+        setNotice(`翻译失败，可重试：${r.error.message}`);
+      }
+    } finally {
+      translatingRef.current = false;
+      setTranslating(null);
+    }
+  }
+
   async function onCopyFirstFrame(text: string) {
     const r = await copyToClipboard(text);
     setNotice(r.ok ? '首帧提示词已复制' : r.error.message);
@@ -290,12 +321,30 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
       {editing ? (
         <div className="mt-2 flex flex-col gap-2">
           {shot.promptEn !== undefined && (
+            <label className="flex items-center gap-1 text-[11px] text-gray-600">
+              <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
+              编辑后自动翻译同步另一语言（默认关，避免误触消耗额度）
+              {translating && <span className="text-blue-600">翻译中…</span>}
+            </label>
+          )}
+          {shot.promptEn !== undefined && autoSync && !persistApiKey && (
+            <input
+              type="password"
+              autoComplete="off"
+              className="w-full rounded border border-amber-300 p-1 text-[11px] outline-none focus:border-amber-500"
+              placeholder="一次性 API Key（已关闭保存，用于自动翻译，不落盘）"
+              value={tempKey}
+              onChange={(e) => setTempKey(e.target.value)}
+            />
+          )}
+          {shot.promptEn !== undefined && (
             <span className="text-[11px] font-medium text-gray-500">中文</span>
           )}
           <textarea
             className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 text-xs outline-none focus:border-blue-500"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => void onTranslate('zh')}
           />
           {shot.promptEn !== undefined && (
             <>
@@ -304,6 +353,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
                 className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 text-xs outline-none focus:border-blue-500"
                 value={draftEn}
                 onChange={(e) => setDraftEn(e.target.value)}
+                onBlur={() => void onTranslate('en')}
               />
             </>
           )}
@@ -311,7 +361,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
             <button
               type="button"
               onClick={onSave}
-              disabled={saving}
+              disabled={saving || translating !== null}
               className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? '保存中…' : '保存'}
