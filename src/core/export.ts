@@ -5,6 +5,20 @@ import { ok, err, type Result, type Project, type Character, type Shot } from '.
 
 export type ExportFormat = 'markdown' | 'json' | 'plaintext';
 
+/** 导出提示词语言选择（Issue #41）：仅对双语镜头（含 promptEn）生效；单语任何值都回退 prompt。 */
+export type ExportPromptLang = 'zh' | 'en' | 'both';
+
+/** 按语言选择把镜头提示词渲染成「标签 → 文本」段。单语项目 promptEn 不存在 → 始终单段 prompt。 */
+function shotPromptParts(s: Shot, lang: ExportPromptLang): Array<{ label: string | null; text: string }> {
+  if (!s.promptEn) return [{ label: null, text: s.prompt }];
+  if (lang === 'zh') return [{ label: null, text: s.prompt }];
+  if (lang === 'en') return [{ label: null, text: s.promptEn }];
+  return [
+    { label: '中文', text: s.prompt },
+    { label: 'English', text: s.promptEn },
+  ];
+}
+
 export const EXPORT_META: Record<ExportFormat, { ext: string; mime: string; label: string }> = {
   markdown: { ext: 'md', mime: 'text/markdown', label: 'Markdown' },
   json: { ext: 'json', mime: 'application/json', label: 'JSON' },
@@ -43,18 +57,21 @@ function toJson(p: Project): string {
   );
 }
 
-function shotMd(s: Shot): string {
+function shotMd(s: Shot, lang: ExportPromptLang): string {
+  const promptBlocks = shotPromptParts(s, lang).flatMap((part) =>
+    part.label ? [`**${part.label}**`, ...codeBlock(part.text)] : codeBlock(part.text),
+  );
   return [
     `### 镜头 ${s.index}：${s.summary}`,
     `- 景别：${s.shotSize}`,
     `- 运镜：${s.cameraMovement}`,
     `- 时长：${s.durationSuggestion}`,
     '',
-    ...codeBlock(s.prompt),
+    ...promptBlocks,
   ].join('\n');
 }
 
-function toMarkdown(p: Project): string {
+function toMarkdown(p: Project, lang: ExportPromptLang): string {
   const parts: string[] = ['# StoryBoard AI 分镜', '', '## 故事', '', p.story, ''];
   if (p.characters.length > 0) {
     parts.push('## 角色一致性', '');
@@ -62,35 +79,45 @@ function toMarkdown(p: Project): string {
     parts.push('');
   }
   parts.push('## 分镜', '');
-  p.shots.forEach((s) => parts.push(shotMd(s), ''));
+  p.shots.forEach((s) => parts.push(shotMd(s, lang), ''));
   if (p.bgm) {
     parts.push('## BGM 提示词', '', ...codeBlock(p.bgm.prompt), '');
   }
   return parts.join('\n').trimEnd() + '\n';
 }
 
-function shotText(s: Shot): string {
+function shotText(s: Shot, lang: ExportPromptLang): string {
+  const promptLines = shotPromptParts(s, lang).map((part) =>
+    part.label ? `提示词（${part.label}）：${part.text}` : `提示词：${part.text}`,
+  );
   return [
     `镜头 ${s.index}：${s.summary}`,
     `景别：${s.shotSize}　运镜：${s.cameraMovement}　时长：${s.durationSuggestion}`,
-    `提示词：${s.prompt}`,
+    ...promptLines,
   ].join('\n');
 }
 
-function toPlaintext(p: Project): string {
+function toPlaintext(p: Project, lang: ExportPromptLang): string {
   const parts: string[] = ['StoryBoard AI 分镜', '', '故事：', p.story, ''];
   if (p.characters.length > 0) {
     parts.push('角色一致性：');
     p.characters.forEach((c, i) => parts.push(`- ${charLabel(c, i)}：${c.appearance}`));
     parts.push('');
   }
-  p.shots.forEach((s) => parts.push(shotText(s), ''));
+  p.shots.forEach((s) => parts.push(shotText(s, lang), ''));
   if (p.bgm) parts.push('BGM 提示词：', p.bgm.prompt, '');
   return parts.join('\n').trimEnd() + '\n';
 }
 
-/** 导出当前项目为指定格式。无分镜 → NOTHING_TO_EXPORT。 */
-export function exportProject(project: Project | null, format: ExportFormat): Result<string> {
+/**
+ * 导出当前项目为指定格式。无分镜 → NOTHING_TO_EXPORT。
+ * promptLang（Issue #41）：双语镜头按语言选择渲染；JSON 始终含完整 shot（含 promptEn）。
+ */
+export function exportProject(
+  project: Project | null,
+  format: ExportFormat,
+  promptLang: ExportPromptLang = 'both',
+): Result<string> {
   if (!project || !project.shots || project.shots.length === 0) {
     return err('NOTHING_TO_EXPORT', '当前没有分镜可导出，请先生成分镜。');
   }
@@ -98,8 +125,8 @@ export function exportProject(project: Project | null, format: ExportFormat): Re
     case 'json':
       return ok(toJson(project));
     case 'markdown':
-      return ok(toMarkdown(project));
+      return ok(toMarkdown(project, promptLang));
     case 'plaintext':
-      return ok(toPlaintext(project));
+      return ok(toPlaintext(project, promptLang));
   }
 }

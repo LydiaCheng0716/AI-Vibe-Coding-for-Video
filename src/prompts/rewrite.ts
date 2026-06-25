@@ -2,6 +2,8 @@
 // feedback（反馈式优化）、params（#32 调参重写）。只让模型回「单个镜头 JSON」，由 core/parse 解析。
 import type { GenerationParams, OutputLanguage, Shot } from '../core/models';
 import { resolveTemplate } from './templates';
+import { cinematicEn } from './templates/cinematic-en';
+import { jimengKelingZh } from './templates/jimeng-keling-zh';
 import { clampField } from './sanitize';
 
 export type RewriteMode = 'regenerate' | 'feedback' | 'params';
@@ -14,11 +16,18 @@ export interface RewriteContext {
   paramOverrides?: Partial<Pick<Shot, 'shotSize' | 'cameraMovement' | 'durationSuggestion'>>;
 }
 
-const SINGLE_SHOT_SHELL =
-  '{ "summary": "string", "shotSize": "string", "cameraMovement": "string", "durationSuggestion": "string", "prompt": "string" }';
+function singleShotShell(bilingual: boolean): string {
+  const head =
+    '"summary": "string", "shotSize": "string", "cameraMovement": "string", "durationSuggestion": "string"';
+  return bilingual
+    ? `{ ${head}, "prompt": "中文版", "promptEn": "English version" }`
+    : `{ ${head}, "prompt": "string" }`;
+}
 
 function langLabel(lang: OutputLanguage): string {
-  return lang === 'en' ? 'English' : '简体中文';
+  if (lang === 'en') return 'English';
+  if (lang === 'zh-en') return '中英双语';
+  return '简体中文';
 }
 
 /** 非空 override 才生效，否则回退（杜绝 '' override 污染，Kimi P2）。供 generation 组装复用。 */
@@ -39,23 +48,30 @@ export function buildShotRewritePrompt(
   mode: RewriteMode,
 ): { system: string; user: string } {
   const lang = langLabel(ctx.params.outputLanguage);
-  const { template } = resolveTemplate(ctx.params);
+  const bilingual = ctx.params.outputLanguage === 'zh-en';
   // 空串 override 回退到原值（`??` 会把 '' 当有效值 → 污染提示词/产出空参数，Kimi P2）；clampField 限长。
   const target = {
     shotSize: clampField(pickOverride(ctx.paramOverrides?.shotSize, ctx.shot.shotSize), 40),
     cameraMovement: clampField(pickOverride(ctx.paramOverrides?.cameraMovement, ctx.shot.cameraMovement), 40),
     durationSuggestion: clampField(pickOverride(ctx.paramOverrides?.durationSuggestion, ctx.shot.durationSuggestion), 20),
   };
+  const styleInstruction = bilingual
+    ? [
+        '本次为「中英双语」：prompt 用简体中文（即梦/可灵风格），promptEn 用英文（电影感风格），两版描述同一镜头并保持一致。',
+        jimengKelingZh.shotPromptInstruction(ctx.params),
+        cinematicEn.shotPromptInstruction(ctx.params),
+      ].join('\n')
+    : resolveTemplate(ctx.params).template.shotPromptInstruction(ctx.params);
 
   const system = [
     '你是专业短视频分镜师，现在只重写「单个镜头」，不要返回其它镜头。',
     INTRO[mode],
     `- summary / shotSize / cameraMovement / durationSuggestion 等可读字段用 ${lang} 输出。`,
     '',
-    template.shotPromptInstruction(ctx.params),
+    styleInstruction,
     '',
     '只输出符合下面结构的单个镜头 JSON，不要任何解释文字、不要 Markdown 代码块标记：',
-    SINGLE_SHOT_SHELL,
+    singleShotShell(bilingual),
   ].join('\n');
 
   const userLines = [

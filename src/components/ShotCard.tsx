@@ -61,8 +61,8 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
     setEditing(true);
   }
 
-  async function onCopy() {
-    const r = await copyToClipboard(shot.prompt);
+  async function onCopy(text: string) {
+    const r = await copyToClipboard(text);
     if (r.ok) {
       setNotice('已复制到剪贴板');
       window.setTimeout(() => setNotice((n) => (n === '已复制到剪贴板' ? null : n)), 2000);
@@ -152,9 +152,20 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
           {shot.editedByUser && <span className="ml-1 text-amber-600">（已编辑）</span>}
         </span>
         <div className="flex gap-2">
-          <button type="button" onClick={onCopy} className="text-xs text-blue-600 hover:underline">
-            复制
-          </button>
+          {shot.promptEn ? (
+            <>
+              <button type="button" onClick={() => onCopy(shot.prompt)} className="text-xs text-blue-600 hover:underline">
+                复制中文
+              </button>
+              <button type="button" onClick={() => onCopy(shot.promptEn ?? '')} className="text-xs text-blue-600 hover:underline">
+                复制英文
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => onCopy(shot.prompt)} className="text-xs text-blue-600 hover:underline">
+              复制
+            </button>
+          )}
           {!editing && (
             <button type="button" onClick={onEdit} className="text-xs text-blue-600 hover:underline">
               编辑
@@ -236,6 +247,21 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
             >
               取消
             </button>
+          </div>
+        </div>
+      ) : shot.promptEn ? (
+        <div className="mt-2 flex flex-col gap-2">
+          <div>
+            <span className="text-[11px] font-medium text-gray-500">中文</span>
+            <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs text-gray-800">
+              {shot.prompt}
+            </pre>
+          </div>
+          <div>
+            <span className="text-[11px] font-medium text-gray-500">English</span>
+            <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs text-gray-800">
+              {shot.promptEn}
+            </pre>
           </div>
         </div>
       ) : (

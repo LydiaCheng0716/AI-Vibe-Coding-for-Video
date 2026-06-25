@@ -1,7 +1,7 @@
 // 结构化数据模型（对齐 docs/api-spec.md 第 2 节）。本 Issue 用到 GenerationParams /
 // ProviderConfig / 统一 Result；Project/Shot/Character/BgmPrompt 先定义好，供后续任务复用。
 
-export type OutputLanguage = 'zh' | 'en';
+export type OutputLanguage = 'zh' | 'en' | 'zh-en';
 export type VideoModel = 'jimeng' | 'keling' | 'sora' | 'runway' | 'generic';
 export type TemplateId = 'cinematic-en' | 'jimeng-keling-zh';
 export type ShotDurationPref = 'short' | 'medium' | 'long';
@@ -83,6 +83,8 @@ export interface Shot {
   cameraMovement: string;
   durationSuggestion: string;
   prompt: string;
+  /** 中英双语（Issue #41）：prompt=中文版，promptEn=英文版；单语时不存在。 */
+  promptEn?: string;
   characterRefs: string[];
   editedByUser: boolean;
 }

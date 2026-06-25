@@ -10,7 +10,8 @@ import { testConnection } from '../services/connectionTest';
 const VIDEO_MODELS: VideoModel[] = ['generic', 'jimeng', 'keling', 'sora', 'runway'];
 const ASPECTS = ['16:9', '9:16', '1:1'];
 const DURATIONS: ShotDurationPref[] = ['short', 'medium', 'long'];
-const LANGS: OutputLanguage[] = ['zh', 'en'];
+const LANGS: OutputLanguage[] = ['zh', 'en', 'zh-en'];
+const LANG_LABELS: Record<OutputLanguage, string> = { zh: '中文', en: 'English', 'zh-en': '中英双语' };
 
 export default function SettingsPanel() {
   const [settings, setSettings] = useState<Settings>(defaultSettings());
@@ -326,7 +327,7 @@ export default function SettingsPanel() {
             >
               {LANGS.map((l) => (
                 <option key={l} value={l}>
-                  {l === 'zh' ? '中文' : 'English'}
+                  {LANG_LABELS[l]}
                 </option>
               ))}
             </select>
