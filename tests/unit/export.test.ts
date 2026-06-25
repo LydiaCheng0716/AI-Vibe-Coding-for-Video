@@ -120,3 +120,57 @@ describe('exportProject: 纯文本 + 编辑后内容 + 隐私', () => {
     }
   });
 });
+
+describe('exportProject: CSV / platform（Issue #34）', () => {
+  it('CSV：表头 + 每镜头一行', () => {
+    const r = exportProject(mkProject(), 'csv');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const lines = r.data.trim().split('\r\n');
+      expect(lines[0]).toBe('镜头,景别,运镜,时长,提示词');
+      expect(lines).toHaveLength(4); // 表头 + 3 镜头
+      expect(lines[1]).toContain('提示词1');
+    }
+  });
+
+  it('CSV：含逗号/引号/换行的提示词正确转义', () => {
+    const p = mkProject({ shots: [mkShot(1, { prompt: 'a,b "q"\n换行' }), mkShot(2), mkShot(3)] });
+    const r = exportProject(p, 'csv');
+    if (r.ok) expect(r.data).toContain('"a,b ""q""\n换行"');
+  });
+
+  it('CSV：双语项目含英文列；单语不含', () => {
+    const bi = mkProject({ shots: [mkShot(1, { promptEn: 'EN1' }), mkShot(2), mkShot(3)] });
+    const rb = exportProject(bi, 'csv');
+    if (rb.ok) {
+      expect(rb.data.split('\r\n')[0]).toContain('英文提示词');
+      expect(rb.data).toContain('EN1');
+    }
+    const rs = exportProject(mkProject(), 'csv');
+    if (rs.ok) expect(rs.data.split('\r\n')[0]).not.toContain('英文提示词');
+  });
+
+  it('platform：含各镜头号 + 提示词；双语 both 出中英', () => {
+    const bi = mkProject({ shots: [mkShot(1, { promptEn: 'EN1' }), mkShot(2), mkShot(3)] });
+    const r = exportProject(bi, 'platform', 'both');
+    if (r.ok) {
+      expect(r.data).toContain('【镜头 1】');
+      expect(r.data).toContain('提示词1');
+      expect(r.data).toContain('EN1');
+    }
+  });
+
+  it('platform：promptLang=en 仅英文', () => {
+    const bi = mkProject({ shots: [mkShot(1, { promptEn: 'EN1' }), mkShot(2, { promptEn: 'EN2' }), mkShot(3, { promptEn: 'EN3' })] });
+    const r = exportProject(bi, 'platform', 'en');
+    if (r.ok) {
+      expect(r.data).toContain('EN1');
+      expect(r.data).not.toContain('提示词1');
+    }
+  });
+
+  it('空项目 → NOTHING_TO_EXPORT（csv/platform）', () => {
+    expect(exportProject(mkProject({ shots: [] }), 'csv').ok).toBe(false);
+    expect(exportProject(null, 'platform').ok).toBe(false);
+  });
+})
