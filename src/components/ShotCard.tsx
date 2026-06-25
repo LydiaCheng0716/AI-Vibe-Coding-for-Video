@@ -2,7 +2,9 @@ import { useRef, useState } from 'react';
 import type { Project, Shot } from '../core/models';
 import { updateShotPrompt, replaceShot } from '../services/storage';
 import { rewriteShot } from '../services/generation';
+import type { RewriteMode } from '../prompts/rewrite';
 import { copyToClipboard } from '../services/clipboard';
+import { shotSizeOptions, cameraMovementOptions, DURATION_OPTIONS, withCurrent } from '../core/shotParams';
 
 /** 撤销栈上限：避免多轮重写累积过多 Shot 占内存（Kimi minor）。 */
 const UNDO_MAX = 20;
@@ -69,8 +71,11 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
     }
   }
 
-  // 单镜头重写（regenerate / feedback）：成功后压入撤销栈、落库、上提。
-  async function doRewrite(mode: 'regenerate' | 'feedback') {
+  // 单镜头重写（regenerate / feedback / params）：成功后压入撤销栈、落库、上提。复用同一路径。
+  async function doRewrite(
+    mode: RewriteMode,
+    paramOverrides?: Partial<Pick<Shot, 'shotSize' | 'cameraMovement' | 'durationSuggestion'>>,
+  ) {
     if (busy || rewritingRef.current || undoingRef.current) return; // 同步拦截重入
     rewritingRef.current = true;
     setRewriting(true);
@@ -82,6 +87,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
         shotId: shot.id,
         mode,
         feedback: mode === 'feedback' ? feedback : undefined,
+        paramOverrides,
         apiKey,
       });
       if (r.ok) {
@@ -122,7 +128,21 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
     }
   }
 
+  // #32：改某参数 → 带齐三参数（改的用新值，其余保当前以锁住未改参数）走 params 模式重写。
+  function changeParam(
+    field: 'shotSize' | 'cameraMovement' | 'durationSuggestion',
+    value: string,
+  ) {
+    if (value === shot[field]) return;
+    void doRewrite('params', {
+      shotSize: field === 'shotSize' ? value : shot.shotSize,
+      cameraMovement: field === 'cameraMovement' ? value : shot.cameraMovement,
+      durationSuggestion: field === 'durationSuggestion' ? value : shot.durationSuggestion,
+    });
+  }
+
   const disabled = busy || rewriting;
+  const lang = project.params.outputLanguage;
 
   return (
     <div className="rounded border border-gray-200 p-3">
@@ -144,11 +164,54 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
       </div>
 
       <p className="text-sm font-medium">{shot.summary}</p>
-      <dl className="mt-1 grid grid-cols-3 gap-1 text-xs text-gray-500">
-        <div>景别：{shot.shotSize}</div>
-        <div>运镜：{shot.cameraMovement}</div>
-        <div>时长：{shot.durationSuggestion}</div>
-      </dl>
+      {/* #32：景别/运镜/时长可调下拉，改后自动重写该镜头提示词 */}
+      <div className="mt-1 grid grid-cols-3 gap-1 text-xs text-gray-500">
+        <label className="flex flex-col gap-0.5">
+          景别
+          <select
+            className="rounded border border-gray-300 p-1 text-xs disabled:opacity-50"
+            value={shot.shotSize}
+            disabled={disabled || editing}
+            onChange={(e) => changeParam('shotSize', e.target.value)}
+          >
+            {withCurrent(shotSizeOptions(lang), shot.shotSize).map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5">
+          运镜
+          <select
+            className="rounded border border-gray-300 p-1 text-xs disabled:opacity-50"
+            value={shot.cameraMovement}
+            disabled={disabled || editing}
+            onChange={(e) => changeParam('cameraMovement', e.target.value)}
+          >
+            {withCurrent(cameraMovementOptions(lang), shot.cameraMovement).map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5">
+          时长
+          <select
+            className="rounded border border-gray-300 p-1 text-xs disabled:opacity-50"
+            value={shot.durationSuggestion}
+            disabled={disabled || editing}
+            onChange={(e) => changeParam('durationSuggestion', e.target.value)}
+          >
+            {withCurrent(DURATION_OPTIONS, shot.durationSuggestion).map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {editing ? (
         <div className="mt-2 flex flex-col gap-2">
