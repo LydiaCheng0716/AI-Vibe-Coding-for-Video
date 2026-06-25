@@ -70,3 +70,31 @@ describe('withRetry（ADR-3）', () => {
     expect(sleep).not.toHaveBeenCalled();
   });
 });
+
+describe('withRetry onAttempt（Issue #33 进度）', () => {
+  it('每次尝试前回调 (attempt, maxAttempts)', async () => {
+    const calls: Array<[number, number]> = [];
+    const seq = [err('NETWORK_ERROR', 'x', true), err('NETWORK_ERROR', 'x', true), ok(1)] as const;
+    let i = 0;
+    await withRetry(async () => seq[i++], {
+      sleep: noSleep,
+      jitter: noJitter,
+      onAttempt: (a, m) => calls.push([a, m]),
+    });
+    expect(calls).toEqual([
+      [1, 3],
+      [2, 3],
+      [3, 3],
+    ]);
+  });
+
+  it('不可重试错误 → 只回调一次 (1,3)', async () => {
+    const calls: Array<[number, number]> = [];
+    await withRetry(async () => err('AUTH_FAILED', 'x', false), {
+      sleep: noSleep,
+      jitter: noJitter,
+      onAttempt: (a, m) => calls.push([a, m]),
+    });
+    expect(calls).toEqual([[1, 3]]);
+  });
+});
