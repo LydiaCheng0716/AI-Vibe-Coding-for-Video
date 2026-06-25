@@ -152,7 +152,9 @@ export async function updateCharacter(
       return { ...c, ...patch };
     });
     if (!hit) return ok(null);
-    const next = reinjectCharacterConsistency({ ...project, characters });
+    // 角色重注入会剥离「角色块→prompt 末尾」（含其后的全局风格块），故随后再重注入全局风格，
+    // 避免角色编辑悄悄抹掉锁定风格锚点（Codex P2）。
+    const next = reinjectGlobalStyle(reinjectCharacterConsistency({ ...project, characters }));
     const saved = await doSaveProject(next);
     if (!saved.ok) return saved;
     return ok(next);

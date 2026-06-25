@@ -43,12 +43,18 @@ export function injectGlobalStyle(project: Project): Project {
   return { ...project, shots: project.shots.map((s) => injectStyleIntoShot(s, project.globalStyle, lang)) };
 }
 
-/** 去掉本模块注入的「全局风格参考」块（始终在 prompt 末尾或与角色块相邻）。 */
+/**
+ * 去掉本模块注入的「全局风格参考」块（**有界**：仅删本块到下一个 `\n\n`/结尾，不误删其后的角色块等
+ * 其它注入块——两类注入块顺序无关、互不干扰，Codex P2）。块为单行、无 `\n\n`。
+ */
 function stripStyleBlock(prompt: string, lang: OutputLanguage): string {
   const header = STYLE_HEADER[lang] ?? STYLE_HEADER.zh;
   const marker = `\n\n${header}\n`;
-  const idx = prompt.indexOf(marker);
-  return idx >= 0 ? prompt.slice(0, idx) : prompt;
+  const start = prompt.indexOf(marker);
+  if (start < 0) return prompt;
+  const nextBlank = prompt.indexOf('\n\n', start + marker.length);
+  const end = nextBlank >= 0 ? nextBlank : prompt.length;
+  return prompt.slice(0, start) + prompt.slice(end);
 }
 
 /**
