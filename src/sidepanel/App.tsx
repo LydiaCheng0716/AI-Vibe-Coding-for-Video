@@ -5,8 +5,9 @@ import ShotList from '../components/ShotList';
 import ExportPanel from '../components/ExportPanel';
 import BgmPanel from '../components/BgmPanel';
 import CharacterPanel from '../components/CharacterPanel';
+import DraftsPanel from '../components/DraftsPanel';
 import type { Project, BgmPrompt, Character, Shot } from '../core/models';
-import { getCurrentProject, getSettings } from '../services/storage';
+import { getCurrentProject, getSettings, saveCurrentProject } from '../services/storage';
 import { subscribeLlmBusy } from '../services/llmLock';
 
 export default function App() {
@@ -71,6 +72,12 @@ export default function App() {
     setProject((prev) => (prev ? { ...prev, characters: [...prev.characters, character] } : prev));
   }
 
+  // 打开历史草稿（Issue #35）：置为 currentProject（使后续单镜头/角色编辑作用于该草稿）+ 恢复内存态。
+  async function onOpenDraft(p: Project) {
+    await saveCurrentProject(p);
+    setProject(p);
+  }
+
   return (
     <div className="min-h-screen bg-white text-gray-900">
       <header className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
@@ -93,6 +100,7 @@ export default function App() {
         ) : (
           <>
             <StoryInput onGenerated={setProject} busy={busy} />
+            <DraftsPanel project={project} onOpen={onOpenDraft} />
             {project && (
               <>
                 <CharacterPanel
