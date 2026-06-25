@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Project, Shot } from '../core/models';
-import { updateShotPrompt, replaceShot, getSettings } from '../services/storage';
+import { updateShotPrompt, replaceShot } from '../services/storage';
 import { rewriteShot } from '../services/generation';
 import { copyToClipboard } from '../services/clipboard';
+
+/** 撤销栈上限：避免多轮重写累积过多 Shot 占内存（Kimi minor）。 */
+const UNDO_MAX = 20;
 
 interface Props {
   shot: Shot;
@@ -10,11 +13,13 @@ interface Props {
   project: Project;
   /** 全局 LLM 锁占用中：禁用重写/优化，防重复提交。 */
   busy: boolean;
+  /** 是否保存 Key（由 App 读一次下传，避免每卡各读一次 storage，Kimi minor）。 */
+  persistApiKey: boolean;
   /** 镜头变更（手动保存 / 重写 / 撤销）后通知父级更新内存态。 */
   onShotChanged: (shot: Shot) => void;
 }
 
-export default function ShotCard({ shot, project, busy, onShotChanged }: Props) {
+export default function ShotCard({ shot, project, busy, persistApiKey, onShotChanged }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(shot.prompt);
   const [notice, setNotice] = useState<string | null>(null);
@@ -23,23 +28,11 @@ export default function ShotCard({ shot, project, busy, onShotChanged }: Props) 
   const [feedback, setFeedback] = useState('');
   const [rewriting, setRewriting] = useState(false);
   const [history, setHistory] = useState<Shot[]>([]); // 撤销栈：每次重写前压入旧版
-  // 不保存 Key 模式：重写需一次性 Key（不落盘），与生成区一致。
-  const [persistKey, setPersistKey] = useState(true);
+  // 一次性 Key（不保存 Key 模式）：重写用，不落盘。
   const [tempKey, setTempKey] = useState('');
-
-  useEffect(() => {
-    let on = true;
-    getSettings()
-      .then((s) => {
-        if (on) setPersistKey(s.persistApiKey);
-      })
-      .catch(() => {
-        /* 读取失败按默认保存模式 */
-      });
-    return () => {
-      on = false;
-    };
-  }, []);
+  // 同步重入保护：快速连点时 state 快照会滞后，用 ref 在事件起点同步拦截（Kimi P2）。
+  const rewritingRef = useRef(false);
+  const undoingRef = useRef(false);
 
   async function onSave() {
     setSaving(true);
@@ -78,45 +71,54 @@ export default function ShotCard({ shot, project, busy, onShotChanged }: Props) 
 
   // 单镜头重写（regenerate / feedback）：成功后压入撤销栈、落库、上提。
   async function doRewrite(mode: 'regenerate' | 'feedback') {
-    if (busy || rewriting) return;
+    if (busy || rewritingRef.current || undoingRef.current) return; // 同步拦截重入
+    rewritingRef.current = true;
     setRewriting(true);
     setNotice(null);
-    const apiKey = persistKey ? undefined : tempKey.trim() || undefined;
-    const r = await rewriteShot({
-      project,
-      shotId: shot.id,
-      mode,
-      feedback: mode === 'feedback' ? feedback : undefined,
-      apiKey,
-    });
-    if (r.ok) {
-      const prev = shot;
-      const saved = await replaceShot(shot.id, r.data);
-      if (!saved.ok) {
-        setNotice(saved.error.message);
-        setRewriting(false);
-        return;
+    try {
+      const apiKey = persistApiKey ? undefined : tempKey.trim() || undefined;
+      const r = await rewriteShot({
+        project,
+        shotId: shot.id,
+        mode,
+        feedback: mode === 'feedback' ? feedback : undefined,
+        apiKey,
+      });
+      if (r.ok) {
+        const prev = shot;
+        const saved = await replaceShot(shot.id, r.data);
+        if (!saved.ok) {
+          setNotice(saved.error.message);
+          return;
+        }
+        setHistory((h) => [...h, prev].slice(-UNDO_MAX));
+        onShotChanged(r.data);
+        if (mode === 'feedback') setFeedback('');
+      } else {
+        setNotice(r.error.message);
       }
-      setHistory((h) => [...h, prev]);
-      onShotChanged(r.data);
-      if (mode === 'feedback') setFeedback('');
-    } else {
-      setNotice(r.error.message);
+    } finally {
+      rewritingRef.current = false;
+      setRewriting(false);
     }
-    setRewriting(false);
   }
 
   async function onUndo() {
-    if (history.length === 0) return;
-    const prev = history[history.length - 1];
-    const saved = await replaceShot(shot.id, prev);
-    if (!saved.ok) {
-      setNotice(saved.error.message);
-      return;
+    if (undoingRef.current || rewritingRef.current || history.length === 0) return; // 同步拦截重入
+    undoingRef.current = true;
+    try {
+      const prev = history[history.length - 1];
+      const saved = await replaceShot(shot.id, prev);
+      if (!saved.ok) {
+        setNotice(saved.error.message);
+        return;
+      }
+      setHistory((h) => h.slice(0, -1));
+      onShotChanged(prev);
+      setNotice('已撤销到上一版');
+    } finally {
+      undoingRef.current = false;
     }
-    setHistory((h) => h.slice(0, -1));
-    onShotChanged(prev);
-    setNotice('已撤销到上一版');
   }
 
   const disabled = busy || rewriting;
@@ -181,7 +183,7 @@ export default function ShotCard({ shot, project, busy, onShotChanged }: Props) 
       {/* 单镜头迭代（Issue #30）：重新生成 / 反馈式优化 / 撤销 */}
       {!editing && (
         <div className="mt-2 flex flex-col gap-2 border-t border-gray-100 pt-2">
-          {!persistKey && (
+          {!persistApiKey && (
             <input
               type="password"
               autoComplete="off"

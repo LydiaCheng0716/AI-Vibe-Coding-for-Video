@@ -17,7 +17,7 @@ import { buildStoryboardPrompt } from '../prompts/storyboard';
 import { buildBgmPrompt } from '../prompts/bgm';
 import { parseStoryboard, parseBgmPrompt, buildProject, parseShotRewrite } from '../core/parse';
 import { injectCharacterConsistency, injectCharactersIntoShot } from '../core/characters';
-import { buildShotRewritePrompt, type RewriteMode } from '../prompts/rewrite';
+import { buildShotRewritePrompt, pickOverride, type RewriteMode } from '../prompts/rewrite';
 import type { BgmPrompt, OutputLanguage, Shot } from '../core/models';
 import { ProviderCallError, createProvider, type LlmProvider } from './llm/provider';
 import { hasHostPermission, originForProvider } from './permissions';
@@ -299,12 +299,13 @@ export async function rewriteShotAttempt(
   const parsed = parseShotRewrite(raw);
   if (!parsed) return err('BAD_RESPONSE_FORMAT', '重写结果格式异常，请重试。');
 
+  // 空串 override 回退到模型解析值（`??` 会把 '' 当有效值 → shotSize:'' 等无效产出，Kimi P2）。
   const merged: Shot = {
     ...shot,
     summary: parsed.summary,
-    shotSize: input.paramOverrides?.shotSize ?? parsed.shotSize,
-    cameraMovement: input.paramOverrides?.cameraMovement ?? parsed.cameraMovement,
-    durationSuggestion: input.paramOverrides?.durationSuggestion ?? parsed.durationSuggestion,
+    shotSize: pickOverride(input.paramOverrides?.shotSize, parsed.shotSize),
+    cameraMovement: pickOverride(input.paramOverrides?.cameraMovement, parsed.cameraMovement),
+    durationSuggestion: pickOverride(input.paramOverrides?.durationSuggestion, parsed.durationSuggestion),
     prompt: parsed.prompt,
     editedByUser: false,
   };

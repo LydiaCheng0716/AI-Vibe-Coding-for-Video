@@ -21,6 +21,11 @@ function langLabel(lang: OutputLanguage): string {
   return lang === 'en' ? 'English' : '简体中文';
 }
 
+/** 非空 override 才生效，否则回退（杜绝 '' override 污染，Kimi P2）。供 generation 组装复用。 */
+export function pickOverride(override: string | undefined, fallback: string): string {
+  return override && override.trim() ? override.trim() : fallback;
+}
+
 const INTRO: Record<RewriteMode, string> = {
   regenerate:
     '请为下面这个镜头重新生成一版提示词：保持同一剧情位置与景别/运镜/时长大方向，换一种更好的画面表达与构图。',
@@ -35,10 +40,11 @@ export function buildShotRewritePrompt(
 ): { system: string; user: string } {
   const lang = langLabel(ctx.params.outputLanguage);
   const { template } = resolveTemplate(ctx.params);
+  // 空串 override 回退到原值（`??` 会把 '' 当有效值 → 污染提示词/产出空参数，Kimi P2）；clampField 限长。
   const target = {
-    shotSize: ctx.paramOverrides?.shotSize ?? ctx.shot.shotSize,
-    cameraMovement: ctx.paramOverrides?.cameraMovement ?? ctx.shot.cameraMovement,
-    durationSuggestion: ctx.paramOverrides?.durationSuggestion ?? ctx.shot.durationSuggestion,
+    shotSize: clampField(pickOverride(ctx.paramOverrides?.shotSize, ctx.shot.shotSize), 40),
+    cameraMovement: clampField(pickOverride(ctx.paramOverrides?.cameraMovement, ctx.shot.cameraMovement), 40),
+    durationSuggestion: clampField(pickOverride(ctx.paramOverrides?.durationSuggestion, ctx.shot.durationSuggestion), 20),
   };
 
   const system = [

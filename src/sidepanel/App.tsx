@@ -6,13 +6,15 @@ import ExportPanel from '../components/ExportPanel';
 import BgmPanel from '../components/BgmPanel';
 import CharacterPanel from '../components/CharacterPanel';
 import type { Project, BgmPrompt, Character, Shot } from '../core/models';
-import { getCurrentProject } from '../services/storage';
+import { getCurrentProject, getSettings } from '../services/storage';
 import { subscribeLlmBusy } from '../services/llmLock';
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [busy, setBusy] = useState(false);
+  // 读一次「是否保存 Key」下传给各镜头卡（避免每卡各读一次 storage）。
+  const [persistApiKey, setPersistApiKey] = useState(true);
 
   // 侧边栏重开时恢复上次分镜结果；订阅全局加载态（TASK-009）。
   useEffect(() => {
@@ -23,6 +25,13 @@ export default function App() {
       })
       .catch(() => {
         /* 读取失败：从空开始，不影响使用 */
+      });
+    getSettings()
+      .then((s) => {
+        if (alive) setPersistApiKey(s.persistApiKey);
+      })
+      .catch(() => {
+        /* 读取失败按默认保存模式 */
       });
     const unsub = subscribeLlmBusy(setBusy);
     return () => {
@@ -84,7 +93,12 @@ export default function App() {
                   onProjectUpdated={onProjectUpdated}
                   onCharacterAdded={onCharacterAdded}
                 />
-                <ShotList project={project} busy={busy} onShotChanged={onShotChanged} />
+                <ShotList
+                  project={project}
+                  busy={busy}
+                  persistApiKey={persistApiKey}
+                  onShotChanged={onShotChanged}
+                />
                 <BgmPanel project={project} busy={busy} onBgmGenerated={onBgmGenerated} />
                 <ExportPanel project={project} />
               </>

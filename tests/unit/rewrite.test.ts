@@ -127,6 +127,20 @@ describe('rewriteShotAttempt', () => {
     if (r.ok) expect(r.data).toMatchObject({ shotSize: '特写', cameraMovement: '环绕', durationSuggestion: '8s' });
   });
 
+  it('空串 override 回退到模型解析值，不产出空参数（Kimi P2）', async () => {
+    const { deps } = makeDeps();
+    const r = await rewriteShotAttempt(
+      { project: project(), shotId: 's1', mode: 'params', paramOverrides: { shotSize: '', cameraMovement: '  ', durationSuggestion: '8s' } },
+      deps,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.data.shotSize).toBe('近景'); // 空串 → 回退 parsed
+      expect(r.data.cameraMovement).toBe('推'); // 空白 → 回退 parsed
+      expect(r.data.durationSuggestion).toBe('8s'); // 非空 override 生效
+    }
+  });
+
   it('锁定角色锚点注入到重写结果（#29 复用，不被模型改写）', async () => {
     const locked: Character = {
       id: 'c1',
