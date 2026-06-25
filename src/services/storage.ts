@@ -1,8 +1,17 @@
 // Storage Service（chrome.storage.local）：设置 / 草稿。对齐 api-spec 3.2。
 // 所有写操作返回 Result<void>，写失败映射 STORAGE_WRITE_FAILED（ARCH-LOW-001），不静默丢数据。
 import { STORAGE_KEYS, SCHEMA_VERSION } from '../core/config';
-import { ok, err, type Result, type Settings, type Project, type BgmPrompt } from '../core/models';
+import {
+  ok,
+  err,
+  type Result,
+  type Settings,
+  type Project,
+  type BgmPrompt,
+  type Character,
+} from '../core/models';
 import { defaultSettings } from '../core/defaults';
+import { reinjectCharacterConsistency } from '../core/characters';
 
 interface DraftRecord {
   text: string;
@@ -108,6 +117,60 @@ export async function updateShotPrompt(shotId: string, prompt: string): Promise<
     });
     if (!hit) return ok(undefined);
     return doSaveProject({ ...project, shots });
+  });
+}
+
+/** 计算下一个不冲突的角色 id（c{N}）。 */
+function nextCharacterId(characters: Character[]): string {
+  let max = 0;
+  for (const c of characters) {
+    const m = c.id.match(/^c(\d+)$/);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `c${max + 1}`;
+}
+
+/**
+ * 调校/锁定某角色（Issue #29 B/C）：浅合并目标角色，其余不变；随后**重注入**刷新镜头锚点
+ * （锁定/改档案即时反映到非编辑镜头、剥离旧锚点防残留）。返回更新后的 Project 供 UI 同步。
+ * 无项目或无匹配 id → ok(null) 无副作用。整个 RMW 在锁内串行，防并发覆盖。
+ */
+export async function updateCharacter(
+  id: string,
+  patch: Partial<Character>,
+): Promise<Result<Project | null>> {
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return ok(null);
+    let hit = false;
+    const characters = project.characters.map((c) => {
+      if (c.id !== id) return c;
+      hit = true;
+      return { ...c, ...patch };
+    });
+    if (!hit) return ok(null);
+    const next = reinjectCharacterConsistency({ ...project, characters });
+    const saved = await doSaveProject(next);
+    if (!saved.ok) return saved;
+    return ok(next);
+  });
+}
+
+/**
+ * 手动新增角色（Issue #29 B）：分配不冲突 id 入库，返回新角色供 UI 同步。
+ * 新角色未被任何镜头引用，不触发重注入。无项目 → 报错（需先生成分镜）。
+ */
+export async function addCharacter(input: Omit<Character, 'id'>): Promise<Result<Character>> {
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return err('NO_GENERATION_INPUT', '请先生成分镜再新增角色。');
+    const character: Character = { ...input, id: nextCharacterId(project.characters) };
+    const saved = await doSaveProject({
+      ...project,
+      characters: [...project.characters, character],
+    });
+    if (!saved.ok) return saved;
+    return ok(character);
   });
 }
 

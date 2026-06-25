@@ -70,8 +70,14 @@ async function callWithTimeout(
  * 共享前置校验：Provider 配置合法 + 已配置且可解密 Key + 目标域名已有 host 权限（api-spec §3.3/§3.4）。
  * 分镜与 BGM 复用，消除重复。返回 settings（含 params）与瞬时明文 apiKey（仅经请求链传递）。
  */
-async function preflightProvider(
-  deps: GenerationDeps,
+/** 前置校验所需的依赖子集（不含落库）；GenerationDeps 满足它，characterSuggest 也复用。 */
+export type PreflightDeps = Pick<
+  GenerationDeps,
+  'getSettings' | 'hasApiKey' | 'getApiKeyForRequest' | 'hasHostPermission' | 'createProvider'
+>;
+
+export async function preflightProvider(
+  deps: PreflightDeps,
   apiKeyOverride?: string,
 ): Promise<Result<{ settings: Settings; apiKey: string }>> {
   const settings = await deps.getSettings();
@@ -146,8 +152,8 @@ export async function generateStoryboardAttempt(
     return providerErr(e);
   }
 
-  // 解析 + 校验（ADR-6）
-  const parsed = parseStoryboard(raw);
+  // 解析 + 校验（ADR-6）。传入输出语言，供 Issue #29 用 profile 合成 appearance 兜底。
+  const parsed = parseStoryboard(raw, params.outputLanguage);
   if (!parsed.ok) return err('BAD_RESPONSE_FORMAT', '生成结果格式异常，请重试。');
 
   // 人物一致性注入（TASK-005）：把引用角色的统一外观注入对应镜头 prompt。

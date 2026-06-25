@@ -1,14 +1,25 @@
 // LLM 原始返回 → 结构化分镜模型的解析与校验（TASK-003 / ADR-6）。
 // 纯函数、无副作用。解析接受范围：纯 JSON → 首个 fenced ```json``` 块 → 首个平衡 {...} 块；
 // 全失败即 BAD_RESPONSE_FORMAT。**不做自由文本猜测、不补全截断 JSON。**
-import type { Character, GenerationParams, Project, Shot } from './models';
+import type {
+  Character,
+  CharacterFieldKey,
+  CharacterProfile,
+  GenerationParams,
+  OutputLanguage,
+  Project,
+  Shot,
+} from './models';
 import { SCHEMA_VERSION } from './config';
+import { CHARACTER_FIELD_KEYS, composeAppearance } from './characterProfile';
 
 export const SHOTS_MIN = 3;
 export const SHOTS_MAX = 10;
 /** 数组上界：抵御异常/恶意 LLM 输出导致的内存/CPU 放大（kimi MED）。超出部分丢弃。 */
 export const CHARACTERS_MAX = 50;
 export const CHAR_REFS_MAX = 20;
+/** 每字段候选建议上限（Issue #29 B：2–4 个；超出截断、脏值清洗）。 */
+export const CHAR_SUGGESTIONS_MAX = 4;
 
 /** 解析结果：成功给结构化数据，失败只给原因（由调用方转成 BAD_RESPONSE_FORMAT）。 */
 export type ParseResult =
@@ -95,11 +106,47 @@ function nonEmptyStr(v: unknown): v is string {
 
 const SHOT_FIELDS = ['summary', 'shotSize', 'cameraMovement', 'durationSuggestion', 'prompt'] as const;
 
+function cleanStr(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+/** 解析结构化档案：逐字段取 string，缺字段补空；全空 → undefined（不挂空档案）。 */
+function parseProfile(raw: unknown): CharacterProfile | undefined {
+  if (!isObj(raw)) return undefined;
+  const profile = {} as CharacterProfile;
+  let any = false;
+  for (const key of CHARACTER_FIELD_KEYS) {
+    const v = cleanStr(raw[key]);
+    profile[key] = v;
+    if (v) any = true;
+  }
+  return any ? profile : undefined;
+}
+
+/** 解析每字段候选建议：每键取 string[]，去空/去重/截断到上限；空 → 不挂该键。 */
+function parseSuggestions(raw: unknown): Partial<Record<CharacterFieldKey, string[]>> | undefined {
+  if (!isObj(raw)) return undefined;
+  const out: Partial<Record<CharacterFieldKey, string[]>> = {};
+  let any = false;
+  for (const key of CHARACTER_FIELD_KEYS) {
+    const arr = raw[key];
+    if (!Array.isArray(arr)) continue;
+    const cleaned = Array.from(
+      new Set(arr.map(cleanStr).filter((s) => s.length > 0)),
+    ).slice(0, CHAR_SUGGESTIONS_MAX);
+    if (cleaned.length > 0) {
+      out[key] = cleaned;
+      any = true;
+    }
+  }
+  return any ? out : undefined;
+}
+
 /**
  * 解析 + 校验 LLM 原始文本为结构化分镜。归一化：补 id/index/editedByUser，
  * characterRefs 按 name 或序号归一到内部 Character.id，对不上的引用丢弃（ADR-6(3)）。
  */
-export function parseStoryboard(raw: string): ParseResult {
+export function parseStoryboard(raw: string, lang: OutputLanguage = 'zh'): ParseResult {
   if (typeof raw !== 'string' || raw.trim() === '') {
     return { ok: false, reason: '空响应' };
   }
@@ -113,14 +160,28 @@ export function parseStoryboard(raw: string): ParseResult {
     return { ok: false, reason: `镜头数 ${rawShots.length} 不在 [${SHOTS_MIN},${SHOTS_MAX}]` };
   }
 
-  // characters：可缺省/空数组；每项 appearance 非空，name 允许 null（不强行编造）；上限保护
+  // characters：可缺省/空数组；name 允许 null（不强行编造）；上限保护。
+  // Issue #29：解析结构化 profile/suggestions/seedPhrase；锚点 appearance 取模型值，
+  // 缺失则由 profile 合成兜底（按输出语言）；appearance 与 profile 皆空 → 丢弃（无锚点）。
   const characters: Character[] = [];
   const rawChars = (Array.isArray(obj.characters) ? obj.characters : []).slice(0, CHARACTERS_MAX);
   rawChars.forEach((c, i) => {
     if (!isObj(c)) return;
-    if (!nonEmptyStr(c.appearance)) return; // appearance 必须有意义
     const name = typeof c.name === 'string' && c.name.trim() ? c.name.trim() : null;
-    characters.push({ id: `c${i + 1}`, name, appearance: c.appearance.trim() });
+    const profile = parseProfile(c.profile);
+    let appearance = cleanStr(c.appearance);
+    if (!appearance && profile) appearance = composeAppearance(profile, lang);
+    if (!appearance) return; // appearance 与 profile 皆空 → 无锚点，丢弃
+    const suggestions = parseSuggestions(c.suggestions);
+    const seedPhrase = cleanStr(c.seedPhrase);
+    characters.push({
+      id: `c${i + 1}`,
+      name,
+      appearance,
+      ...(profile ? { profile } : {}),
+      ...(suggestions ? { suggestions } : {}),
+      ...(seedPhrase ? { seedPhrase } : {}),
+    });
   });
 
   // characterRefs 归一：name 命中（不分大小写）/ 内部 id（cN）/ 1-based 序号 → Character.id；否则丢弃。
@@ -188,6 +249,24 @@ export function parseBgmPrompt(raw: string): string | null {
   }
   const text = raw.trim();
   return text.length > 0 ? text : null;
+}
+
+/**
+ * 解析单字段「重新建议」响应（Issue #29 B）：取 {"suggestions":[...]}（或裸数组），
+ * 清洗去空去重、截到上限；空 → null（调用方转 BAD_RESPONSE_FORMAT）。
+ */
+export function parseFieldSuggestions(raw: string): string[] | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const obj = tryParseObject(raw);
+  let arr: unknown[] | null = null;
+  if (Array.isArray(obj)) arr = obj;
+  else if (isObj(obj) && Array.isArray(obj.suggestions)) arr = obj.suggestions;
+  if (!arr) return null;
+  const cleaned = Array.from(new Set(arr.map(cleanStr).filter((s) => s.length > 0))).slice(
+    0,
+    CHAR_SUGGESTIONS_MAX,
+  );
+  return cleaned.length > 0 ? cleaned : null;
 }
 
 /** 把解析结果组装成完整 Project（供 generation.ts 落库）。 */
