@@ -61,4 +61,14 @@ describe('createLocalCollection', () => {
     await Promise.all([c.add({ name: '1' }), c.add({ name: '2' }), c.add({ name: '3' })]);
     expect(await c.list()).toHaveLength(3);
   });
+
+  it('同一 storageKey 的多个实例共享锁，并发不丢更新（Codex P2）', async () => {
+    // 两个独立实例操作同一 key：锁按 key 共享 → 两次 add 都保留。
+    await Promise.all([
+      createLocalCollection<Item>('sharedKey').add({ name: 'a' }),
+      createLocalCollection<Item>('sharedKey').add({ name: 'b' }),
+    ]);
+    const names = (await createLocalCollection<Item>('sharedKey').list()).map((i) => i.name).sort();
+    expect(names).toEqual(['a', 'b']);
+  });
 });

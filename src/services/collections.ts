@@ -23,6 +23,22 @@ interface Store<T> {
   items: T[];
 }
 
+// 锁按 storageKey 共享（而非按实例）：同一 key 即便有多个 createLocalCollection 实例，
+// 也走同一条串行链，杜绝并发 RMW 丢更新（Codex P2）。
+const keyLocks = new Map<string, Promise<unknown>>();
+function withKeyLock<R>(storageKey: string, fn: () => Promise<R>): Promise<R> {
+  const prev = keyLocks.get(storageKey) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  keyLocks.set(
+    storageKey,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return run;
+}
+
 export interface LocalCollection<T extends CollectionRecord> {
   list(): Promise<T[]>;
   add(input: Omit<T, keyof CollectionRecord>): Promise<Result<T>>;
@@ -33,15 +49,7 @@ export interface LocalCollection<T extends CollectionRecord> {
 export function createLocalCollection<T extends CollectionRecord>(
   storageKey: string,
 ): LocalCollection<T> {
-  let chain: Promise<unknown> = Promise.resolve();
-  function withLock<R>(fn: () => Promise<R>): Promise<R> {
-    const run = chain.then(fn, fn);
-    chain = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
-  }
+  const withLock = <R>(fn: () => Promise<R>): Promise<R> => withKeyLock(storageKey, fn);
 
   async function read(): Promise<T[]> {
     const got = await chrome.storage.local.get(storageKey);
