@@ -174,3 +174,21 @@ describe('exportProject: CSV / platform（Issue #34）', () => {
     expect(exportProject(null, 'platform').ok).toBe(false);
   });
 })
+
+describe('exportProject: CSV 公式注入防护（Codex P2）', () => {
+  it('以 = + - @ 开头的提示词被加单引号中和', () => {
+    const p = mkProject({
+      shots: [
+        mkShot(1, { prompt: '=SUM(A1:A9)' }),
+        mkShot(2, { prompt: '+1+2' }),
+        mkShot(3, { prompt: '@cmd' }),
+      ],
+    });
+    const r = exportProject(p, 'csv');
+    if (r.ok) {
+      expect(r.data).toContain("'=SUM(A1:A9)");
+      expect(r.data).toContain("'+1+2");
+      expect(r.data).toContain("'@cmd");
+    }
+  });
+})

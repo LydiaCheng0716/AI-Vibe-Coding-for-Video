@@ -113,9 +113,15 @@ function toPlaintext(p: Project, lang: ExportPromptLang): string {
 
 // ---- CSV 分镜表（Issue #34）----
 
-/** CSV 单元格转义：含 " , 换行 → 双引号包裹，内部 " → ""。 */
+/**
+ * CSV 单元格转义。
+ * 1) 公式注入防护（Codex P2）：以 = + - @（或 TAB/CR）开头的单元格在表格软件里会被当公式执行，
+ *    用户/模型生成的提示词可能含这些前缀 → 加单引号前缀中和，使其当纯文本。
+ * 2) 含 " , 换行 → 双引号包裹，内部 " → ""。
+ */
 function csvCell(v: string): string {
-  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 function toCsv(p: Project): string {
