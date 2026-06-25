@@ -1,7 +1,8 @@
 // 分镜导出（TASK-008 / api-spec §3.5）。纯函数：Project → Markdown / JSON / 纯文本。
 // 隐私（ARCH-LOW-002）：Project 数据结构本身不含 API Key / Provider 凭据（baseUrl 等），
 // 这些存于 settings/keyVault，不在 Project，故导出天然不泄露凭据。
-import { ok, err, type Result, type Project, type Character, type Shot } from './models';
+import { ok, err, type Result, type Project, type Character, type Shot, type Transition } from './models';
+import { transitionLabel } from './transitions';
 
 export type ExportFormat = 'markdown' | 'json' | 'plaintext' | 'csv' | 'platform';
 
@@ -73,6 +74,14 @@ function shotMd(s: Shot, lang: ExportPromptLang): string {
   ].join('\n');
 }
 
+/** 转场说明文本（按导出语言；双语 both 出中英）。 */
+function transitionNotes(t: Transition, lang: ExportPromptLang): string[] {
+  if (!t.noteEn) return [t.note];
+  if (lang === 'zh') return [t.note];
+  if (lang === 'en') return [t.noteEn];
+  return [`中文：${t.note}`, `English：${t.noteEn}`];
+}
+
 function toMarkdown(p: Project, lang: ExportPromptLang): string {
   const parts: string[] = ['# StoryPop 分镜', '', '## 故事', '', p.story, ''];
   if (p.characters.length > 0) {
@@ -81,7 +90,15 @@ function toMarkdown(p: Project, lang: ExportPromptLang): string {
     parts.push('');
   }
   parts.push('## 分镜', '');
-  p.shots.forEach((s) => parts.push(shotMd(s, lang), ''));
+  p.shots.forEach((s, i) => {
+    parts.push(shotMd(s, lang), '');
+    if (s.transitionToNext && i < p.shots.length - 1) {
+      const label = transitionLabel(s.transitionToNext.type, p.params.outputLanguage);
+      parts.push(`**转场 → 镜头 ${s.index + 1}（${label}）**`);
+      transitionNotes(s.transitionToNext, lang).forEach((n) => parts.push(`> ${n}`));
+      parts.push('');
+    }
+  });
   if (p.bgm) {
     parts.push('## BGM 提示词', '', ...codeBlock(p.bgm.prompt), '');
   }
@@ -106,7 +123,15 @@ function toPlaintext(p: Project, lang: ExportPromptLang): string {
     p.characters.forEach((c, i) => parts.push(`- ${charLabel(c, i)}：${c.appearance}`));
     parts.push('');
   }
-  p.shots.forEach((s) => parts.push(shotText(s, lang), ''));
+  p.shots.forEach((s, i) => {
+    parts.push(shotText(s, lang), '');
+    if (s.transitionToNext && i < p.shots.length - 1) {
+      const label = transitionLabel(s.transitionToNext.type, p.params.outputLanguage);
+      parts.push(`转场 → 镜头 ${s.index + 1}（${label}）：`);
+      transitionNotes(s.transitionToNext, lang).forEach((n) => parts.push(n));
+      parts.push('');
+    }
+  });
   if (p.bgm) parts.push('BGM 提示词：', p.bgm.prompt, '');
   return parts.join('\n').trimEnd() + '\n';
 }
@@ -124,9 +149,24 @@ function csvCell(v: string): string {
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
+function transitionCsv(s: Shot, p: Project): string {
+  const t = s.transitionToNext;
+  if (!t) return '';
+  return `${transitionLabel(t.type, p.params.outputLanguage)}：${t.note}`;
+}
+
 function toCsv(p: Project): string {
   const bilingual = p.shots.some((s) => s.promptEn);
-  const header = ['镜头', '景别', '运镜', '时长', '提示词', ...(bilingual ? ['英文提示词'] : [])];
+  const hasTransition = p.shots.some((s) => s.transitionToNext);
+  const header = [
+    '镜头',
+    '景别',
+    '运镜',
+    '时长',
+    '提示词',
+    ...(bilingual ? ['英文提示词'] : []),
+    ...(hasTransition ? ['转场(至下一镜)'] : []),
+  ];
   const rows = p.shots.map((s) =>
     [
       String(s.index),
@@ -135,6 +175,7 @@ function toCsv(p: Project): string {
       s.durationSuggestion,
       s.prompt,
       ...(bilingual ? [s.promptEn ?? ''] : []),
+      ...(hasTransition ? [transitionCsv(s, p)] : []),
     ]
       .map(csvCell)
       .join(','),

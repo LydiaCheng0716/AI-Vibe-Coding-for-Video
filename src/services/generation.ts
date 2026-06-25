@@ -15,11 +15,13 @@ import { STORYBOARD_TIMEOUT_MS, BGM_TIMEOUT_MS, MAX_OUTPUT_TOKENS } from '../cor
 import { validateStory, validateProviderConfig } from '../core/validate';
 import { buildStoryboardPrompt } from '../prompts/storyboard';
 import { buildBgmPrompt } from '../prompts/bgm';
-import { parseStoryboard, parseBgmPrompt, buildProject, parseShotRewrite } from '../core/parse';
+import { parseStoryboard, parseBgmPrompt, buildProject, parseShotRewrite, parseTransition } from '../core/parse';
+import { buildTransitionPrompt } from '../prompts/transition';
 import { injectCharacterConsistency, injectCharactersIntoShot } from '../core/characters';
 import { injectGlobalStyle, injectStyleIntoShot } from '../core/style';
 import { buildShotRewritePrompt, pickOverride, type RewriteMode } from '../prompts/rewrite';
-import type { BgmPrompt, OutputLanguage, Shot } from '../core/models';
+import type { BgmPrompt, OutputLanguage, Shot, Transition } from '../core/models';
+import { CHARACTER_SUGGEST_TIMEOUT_MS, CHARACTER_SUGGEST_MAX_TOKENS } from '../core/config';
 import { ProviderCallError, createProvider, type LlmProvider } from './llm/provider';
 import { hasHostPermission, originForProvider } from './permissions';
 import { getSettings, saveCurrentProject } from './storage';
@@ -362,4 +364,57 @@ export async function rewriteShot(
   retryOpts: RetryOptions = {},
 ): Promise<Result<Shot>> {
   return withLlmLock(() => withRetry(() => rewriteShotAttempt(input, deps), retryOpts));
+}
+
+// ---- 转场建议生成（Issue #54）----
+
+export interface TransitionInput {
+  prevShot: Shot;
+  nextShot: Shot;
+  /** 转场类型 id（core/transitions）。 */
+  type: string;
+  apiKey?: string;
+}
+
+/** 单次转场生成尝试：前置校验 → prompt → provider（短超时）→ 解析，不锁不存。 */
+export async function generateTransitionAttempt(
+  input: TransitionInput,
+  deps: PreflightDeps = realDeps,
+): Promise<Result<Transition>> {
+  const pre = await preflightProvider(deps, input.apiKey);
+  if (!pre.ok) return pre;
+  const { settings, apiKey } = pre.data;
+  const lang = settings.params.outputLanguage;
+
+  const { system, user } = buildTransitionPrompt(input.prevShot, input.nextShot, input.type, lang);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CHARACTER_SUGGEST_TIMEOUT_MS);
+  let raw: string;
+  try {
+    raw = await deps.createProvider(settings.provider).complete({
+      system,
+      user,
+      model: settings.provider.model,
+      apiKey,
+      maxTokens: CHARACTER_SUGGEST_MAX_TOKENS,
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    return providerErr(e);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const parsed = parseTransition(raw);
+  if (!parsed) return err('BAD_RESPONSE_FORMAT', '转场生成结果异常，请重试。');
+  return ok({ type: input.type, note: parsed.note, ...(parsed.noteEn ? { noteEn: parsed.noteEn } : {}) });
+}
+
+/** 生成转场建议（与分镜/BGM 共享全局锁 + 退避重试）。UI 成功后调 storage.updateShotTransition 落库。 */
+export async function generateTransition(
+  input: TransitionInput,
+  deps: PreflightDeps = realDeps,
+  retryOpts: RetryOptions = {},
+): Promise<Result<Transition>> {
+  return withLlmLock(() => withRetry(() => generateTransitionAttempt(input, deps), retryOpts));
 }

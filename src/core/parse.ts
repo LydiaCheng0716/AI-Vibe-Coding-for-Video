@@ -336,6 +336,22 @@ export function parseShotRewrite(
   };
 }
 
+/**
+ * 解析转场建议（Issue #54）：取 `{note, noteEn?}`（JSON 优先）；无 note 时回退整段文本为 note；
+ * 空 → null（调用方转 BAD_RESPONSE_FORMAT）。
+ */
+export function parseTransition(raw: string): { note: string; noteEn?: string } | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const obj = tryParseObject(raw);
+  if (isObj(obj)) {
+    const note = cleanStr(obj.note);
+    const noteEn = cleanStr(obj.noteEn);
+    if (note) return { note, ...(noteEn ? { noteEn } : {}) };
+  }
+  const text = raw.trim();
+  return text.length > 0 ? { note: text } : null;
+}
+
 /** 把解析结果组装成完整 Project（供 generation.ts 落库）。 */
 export function buildProject(
   story: string,
