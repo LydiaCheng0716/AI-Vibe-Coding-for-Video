@@ -22,6 +22,10 @@ export const MAX_OUTPUT_TOKENS = 4000;
 export const CONNECTION_TEST_TIMEOUT_MS = 20_000;
 export const CONNECTION_TEST_MAX_TOKENS = 1;
 
+/** 角色单字段「重新建议」（Issue #29）：小请求 + 短超时。 */
+export const CHARACTER_SUGGEST_TIMEOUT_MS = 30_000;
+export const CHARACTER_SUGGEST_MAX_TOKENS = 400;
+
 /** 本地存储 schema 版本（迁移用）。 */
 export const SCHEMA_VERSION = 1;
 

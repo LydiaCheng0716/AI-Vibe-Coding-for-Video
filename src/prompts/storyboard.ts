@@ -14,7 +14,12 @@ export interface PromptPair {
 
 /** ADR-6(1) 期望输出外壳，写进 system 提示，强约束模型只回 JSON。 */
 const JSON_SHELL = `{
-  "characters": [ { "name": "string|null", "appearance": "string" } ],
+  "characters": [ {
+    "name": "string|null", "appearance": "string",
+    "profile": { "codename": "string", "ageRange": "string", "gender": "string", "ethnicitySkin": "string", "hair": "string", "face": "string", "build": "string", "clothing": "string", "accessories": "string", "demeanor": "string" },
+    "suggestions": { "ageRange": ["string"], "hair": ["string"] },
+    "seedPhrase": "string"
+  } ],
   "shots": [
     { "summary": "string", "shotSize": "string", "cameraMovement": "string",
       "durationSuggestion": "string", "prompt": "string", "characterRefs": ["string"] }

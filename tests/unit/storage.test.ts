@@ -9,9 +9,12 @@ import {
   getCurrentProject,
   updateShotPrompt,
   updateCurrentProjectBgm,
+  updateCharacter,
+  addCharacter,
 } from '../../src/services/storage';
 import { defaultSettings, defaultParams } from '../../src/core/defaults';
-import type { Project, Shot } from '../../src/core/models';
+import { emptyProfile } from '../../src/core/characterProfile';
+import type { Character, Project, Shot } from '../../src/core/models';
 
 function mkShot(id: string, index: number): Shot {
   return {
@@ -147,5 +150,64 @@ describe('storage: updateShotPrompt (TASK-006)', () => {
     expect(p?.shots[0]).toMatchObject({ prompt: 'A', editedByUser: true });
     expect(p?.shots[2]).toMatchObject({ prompt: 'C', editedByUser: true });
     expect(p?.shots[1]).toMatchObject({ prompt: 'prompt-s2', editedByUser: false });
+  });
+});
+
+function mkChar(over: Partial<Character> = {}): Character {
+  return { id: 'c1', name: '林夏', appearance: '', profile: { ...emptyProfile(), hair: '黑长直' }, ...over };
+}
+
+function mkProjectWithChar(): Project {
+  const p = mkProject();
+  p.characters = [mkChar(), mkChar({ id: 'c2', name: '阿明', profile: { ...emptyProfile(), hair: '寸头' } })];
+  p.shots[0] = { ...p.shots[0], characterRefs: ['c1'] };
+  return p;
+}
+
+describe('storage: 角色调校（Issue #29）', () => {
+  it('updateCharacter 浅合并仅改目标角色，其它不变；返回更新 Project', async () => {
+    await saveCurrentProject(mkProjectWithChar());
+    const r = await updateCharacter('c1', { locked: true });
+    expect(r.ok).toBe(true);
+    const p = await getCurrentProject();
+    expect(p?.characters[0]).toMatchObject({ id: 'c1', locked: true });
+    expect(p?.characters[1]).toMatchObject({ id: 'c2', name: '阿明' }); // 其它角色不变
+    expect(p?.characters[1].locked).toBeUndefined();
+  });
+
+  it('updateCharacter 改档案 → 重注入刷新镜头锚点（旧值不残留）', async () => {
+    // 先注入一遍（保存的项目镜头尚未注入；用 update 触发重注入）
+    await saveCurrentProject(mkProjectWithChar());
+    await updateCharacter('c1', { profile: { ...emptyProfile(), hair: '黑长直' } });
+    let p = await getCurrentProject();
+    expect(p?.shots[0].prompt).toContain('发型发色:黑长直');
+    // 改成金色短发
+    await updateCharacter('c1', { profile: { ...emptyProfile(), hair: '金色短发' } });
+    p = await getCurrentProject();
+    expect(p?.shots[0].prompt).toContain('发型发色:金色短发');
+    expect(p?.shots[0].prompt).not.toContain('黑长直');
+  });
+
+  it('updateCharacter 无项目 → ok(null)；无匹配 id → ok(null)', async () => {
+    const none = await updateCharacter('c1', { locked: true });
+    expect(none).toMatchObject({ ok: true, data: null });
+    await saveCurrentProject(mkProjectWithChar());
+    const miss = await updateCharacter('c999', { locked: true });
+    expect(miss).toMatchObject({ ok: true, data: null });
+  });
+
+  it('addCharacter 追加并分配不冲突 id；返回新角色', async () => {
+    await saveCurrentProject(mkProjectWithChar()); // 已有 c1,c2
+    const r = await addCharacter({ name: '新角色', appearance: '', profile: emptyProfile() });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.id).toBe('c3');
+    const p = await getCurrentProject();
+    expect(p?.characters).toHaveLength(3);
+    expect(p?.characters[2]).toMatchObject({ id: 'c3', name: '新角色' });
+  });
+
+  it('addCharacter 无项目 → 报错', async () => {
+    const r = await addCharacter({ name: 'x', appearance: '', profile: emptyProfile() });
+    expect(r.ok).toBe(false);
   });
 });

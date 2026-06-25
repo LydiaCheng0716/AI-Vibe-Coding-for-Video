@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseStoryboard, parseBgmPrompt } from '../../src/core/parse';
+import { parseStoryboard, parseBgmPrompt, parseFieldSuggestions } from '../../src/core/parse';
 
 describe('parseBgmPrompt（TASK-007）', () => {
   it('JSON {prompt} → 取 prompt', () => {
@@ -31,6 +31,76 @@ function shot(over: Partial<Record<string, unknown>> = {}) {
   };
 }
 const threeShots = [shot(), shot({ summary: 's2' }), shot({ summary: 's3' })];
+
+describe('parseStoryboard: 结构化角色卡（Issue #29）', () => {
+  it('解析 profile / suggestions(截 2–4) / seedPhrase', () => {
+    const raw = JSON.stringify({
+      characters: [
+        {
+          name: '林夏',
+          profile: { codename: '林夏', hair: '黑长直', clothing: '红色卫衣' },
+          suggestions: { ageRange: ['18–24', '25–34', '', '18–24'], hair: ['黑长直', '高马尾', '短发', '波浪卷', '丸子头'] },
+          seedPhrase: 'asian girl, long black hair, red hoodie',
+        },
+      ],
+      shots: threeShots,
+    });
+    const r = parseStoryboard(raw, 'zh');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const c = r.characters[0];
+    expect(c.profile?.hair).toBe('黑长直');
+    expect(c.suggestions?.ageRange).toEqual(['18–24', '25–34']); // 去空去重
+    expect(c.suggestions?.hair).toHaveLength(4); // 截到上限 4
+    expect(c.seedPhrase).toBe('asian girl, long black hair, red hoodie');
+    expect(c.appearance).toContain('黑长直'); // appearance 缺失 → 由 profile 合成兜底
+  });
+
+  it('仅 appearance 的老格式照常解析（向后兼容）', () => {
+    const raw = JSON.stringify({
+      characters: [{ name: '小明', appearance: '红色卫衣的短发男孩' }],
+      shots: threeShots,
+    });
+    const r = parseStoryboard(raw);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.characters[0].appearance).toBe('红色卫衣的短发男孩');
+      expect(r.characters[0].profile).toBeUndefined();
+    }
+  });
+
+  it('appearance 与 profile 皆空 → 丢弃该角色', () => {
+    const raw = JSON.stringify({
+      characters: [{ name: '幽灵', profile: {} }],
+      shots: threeShots,
+    });
+    const r = parseStoryboard(raw);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.characters).toHaveLength(0);
+  });
+});
+
+describe('parseFieldSuggestions（Issue #29 B）', () => {
+  it('{"suggestions":[...]} → 清洗去空去重截断', () => {
+    expect(parseFieldSuggestions('{"suggestions":["高马尾","短发","","高马尾","长直发","波浪","丸子"]}')).toEqual([
+      '高马尾',
+      '短发',
+      '长直发',
+      '波浪',
+    ]);
+  });
+  it('裸数组也接受', () => {
+    expect(parseFieldSuggestions('["18–24","25–34"]')).toEqual(['18–24', '25–34']);
+  });
+  it('fenced / 前后带文本也能提取', () => {
+    expect(parseFieldSuggestions('建议如下：\n```json\n{"suggestions":["a","b"]}\n```')).toEqual(['a', 'b']);
+  });
+  it('空 / 无候选 → null', () => {
+    expect(parseFieldSuggestions('')).toBeNull();
+    expect(parseFieldSuggestions('{"suggestions":[]}')).toBeNull();
+    expect(parseFieldSuggestions('抱歉')).toBeNull();
+  });
+});
 
 describe('parseStoryboard: 解析接受范围（ADR-6(2)）', () => {
   it('纯 JSON 直接解析', () => {

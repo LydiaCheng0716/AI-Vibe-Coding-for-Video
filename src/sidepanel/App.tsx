@@ -4,7 +4,8 @@ import SettingsPanel from '../components/SettingsPanel';
 import ShotList from '../components/ShotList';
 import ExportPanel from '../components/ExportPanel';
 import BgmPanel from '../components/BgmPanel';
-import type { Project, BgmPrompt } from '../core/models';
+import CharacterPanel from '../components/CharacterPanel';
+import type { Project, BgmPrompt, Character } from '../core/models';
 import { getCurrentProject } from '../services/storage';
 import { subscribeLlmBusy } from '../services/llmLock';
 
@@ -48,6 +49,16 @@ export default function App() {
     setProject((prev) => (prev ? { ...prev, bgm } : prev));
   }
 
+  // 角色调校/锁定后 storage 已重注入并落库，这里整体同步内存态（含刷新后的镜头 prompt）。
+  function onProjectUpdated(next: Project) {
+    setProject(next);
+  }
+
+  // 手动新增角色：追加到内存态（storage 已落库）。
+  function onCharacterAdded(character: Character) {
+    setProject((prev) => (prev ? { ...prev, characters: [...prev.characters, character] } : prev));
+  }
+
   return (
     <div className="min-h-screen bg-white text-gray-900">
       <header className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
@@ -72,6 +83,14 @@ export default function App() {
             <StoryInput onGenerated={setProject} busy={busy} />
             {project && (
               <>
+                <CharacterPanel
+                  characters={project.characters}
+                  story={project.story}
+                  lang={project.params.outputLanguage}
+                  busy={busy}
+                  onProjectUpdated={onProjectUpdated}
+                  onCharacterAdded={onCharacterAdded}
+                />
                 <ShotList shots={project.shots} onShotSaved={onShotSaved} />
                 <BgmPanel project={project} busy={busy} onBgmGenerated={onBgmGenerated} />
                 <ExportPanel project={project} />

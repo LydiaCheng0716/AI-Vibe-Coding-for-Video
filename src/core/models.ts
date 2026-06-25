@@ -33,10 +33,46 @@ export interface Settings {
   schemaVersion: number;
 }
 
+/** 结构化角色档案的固定字段键（Issue #29 A）。顺序由 core/characterProfile 锁定。 */
+export type CharacterFieldKey =
+  | 'codename' // 代号
+  | 'ageRange' // 年龄段
+  | 'gender' // 性别
+  | 'ethnicitySkin' // 种族/肤色
+  | 'hair' // 发型发色
+  | 'face' // 脸部特征
+  | 'build' // 体型
+  | 'clothing' // 服装
+  | 'accessories' // 配饰
+  | 'demeanor'; // 气质/表情基调
+
+/** 结构化角色档案：固定 10 字段，作为锁住人物不漂移的外观锚点（Issue #29 A）。 */
+export interface CharacterProfile {
+  codename: string;
+  ageRange: string;
+  gender: string;
+  ethnicitySkin: string;
+  hair: string;
+  face: string;
+  build: string;
+  clothing: string;
+  accessories: string;
+  demeanor: string;
+}
+
 export interface Character {
   id: string;
   name: string | null;
+  /** 渲染锚点：注入每镜头用；无 profile 时回退到此（兼容旧数据）。 */
   appearance: string;
+  /** 结构化档案（Issue #29 A）。 */
+  profile?: CharacterProfile;
+  /** 故事未明确字段的 2–4 个候选建议（Issue #29 B）。 */
+  suggestions?: Partial<Record<CharacterFieldKey, string[]>>;
+  /** 锁定为权威版：后续（含 #30 单镜头重生成）注入这版、不被模型改写（Issue #29 C）。 */
+  locked?: boolean;
+  /** 外观种子短语：便于贴到图/视频工具（Issue #29 C 可选）。 */
+  seedPhrase?: string;
 }
 
 export interface Shot {
