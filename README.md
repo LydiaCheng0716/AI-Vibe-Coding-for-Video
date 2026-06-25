@@ -2,7 +2,7 @@
 
 多 Agent 协作开发工作流，Human PO 全程参与关键决策。
 
-> **首个产品 StoryBoard AI — MVP 已完成。** TASK-001~009（九个任务）已全部实现、过三道质量门（CI + Kimi 外部评审 + Codex 终审）并合并到 `develop`。安装与使用见下方 [StoryBoard AI — 安装与使用](#storyboard-ai--安装与使用)。
+> **首个产品 StoryPop — MVP 已完成。** TASK-001~009（九个任务）已全部实现、过三道质量门（CI + Kimi 外部评审 + Codex 终审）并合并到 `develop`。安装与使用见下方 [StoryPop — 安装与使用](#storypop--安装与使用)。
 
 ---
 
@@ -72,7 +72,7 @@ Human PO → 批准合并 → develop → main
 
 ```
 AI-Vibe-Coding-for-Video/
-├── docs/                        # 设计文档（StoryBoard AI）
+├── docs/                        # 设计文档（StoryPop）
 │   ├── PRD.md                   # 产品需求文档
 │   ├── architecture.md          # 系统架构设计（含目录结构与 manifest 骨架）
 │   ├── api-spec.md              # 服务契约 + 出站 LLM 调用契约
@@ -85,13 +85,13 @@ AI-Vibe-Coding-for-Video/
     └── developer.md  reviewer.md  qa.md  deploy.md
 ```
 
-> **首个产品 StoryBoard AI 是纯客户端 Chrome MV3 扩展，没有 `frontend/`+`backend/` 两层、没有数据库。** 实现代码落地后的扩展内部结构（`src/sidepanel`、`src/services`、`src/core` 等）以 [docs/architecture.md](docs/architecture.md) 第 3 节为准。下方「推荐技术栈」是工厂的**通用默认**，具体项目按 `architecture.md` 调整。
+> **首个产品 StoryPop 是纯客户端 Chrome MV3 扩展，没有 `frontend/`+`backend/` 两层、没有数据库。** 实现代码落地后的扩展内部结构（`src/sidepanel`、`src/services`、`src/core` 等）以 [docs/architecture.md](docs/architecture.md) 第 3 节为准。下方「推荐技术栈」是工厂的**通用默认**，具体项目按 `architecture.md` 调整。
 
 ---
 
-## StoryBoard AI — 安装与使用
+## StoryPop — 安装与使用
 
-StoryBoard AI 是一个 Chrome 侧边栏插件：把口语化故事自动转成结构化分镜、AI 视频提示词和 BGM 提示词。**纯客户端、BYOK（自带 LLM Key）、无账号、无后端**——所有数据存本地，生成时只把内容发往你自己选择的 LLM 厂商。
+StoryPop 是一个 Chrome 侧边栏插件：把口语化故事自动转成结构化分镜、AI 视频提示词和 BGM 提示词。**纯客户端、BYOK（自带 LLM Key）、无账号、无后端**——所有数据存本地，生成时只把内容发往你自己选择的 LLM 厂商。
 
 ### 当前能力（MVP）
 
@@ -116,7 +116,7 @@ npm run build      # 产物输出到 dist/
 
 1. Chrome 打开 `chrome://extensions`，右上角开启「开发者模式」。
 2. 点「加载已解压的扩展程序」，选择项目下的 `dist/` 目录。
-3. 点击工具栏的 StoryBoard AI 图标打开侧边栏（`chrome.sidePanel`）。
+3. 点击工具栏的 StoryPop 图标打开侧边栏（`chrome.sidePanel`）。
 
 > 开发时也可 `npm run dev`（Vite + HMR）。
 
@@ -196,9 +196,9 @@ Terminal 6：QA                (.agents/qa.md)
 
 ## 推荐技术栈（通用默认，按项目调整）
 
-> 下表是「AI 软件工厂」对一般 Web 项目的**默认建议**。**本仓库的产品 StoryBoard AI 不用这套**——它是纯客户端 Chrome 扩展，实际技术栈见右列「StoryBoard AI 实际」（权威定义在 [docs/architecture.md](docs/architecture.md)）。
+> 下表是「AI 软件工厂」对一般 Web 项目的**默认建议**。**本仓库的产品 StoryPop 不用这套**——它是纯客户端 Chrome 扩展，实际技术栈见右列「StoryPop 实际」（权威定义在 [docs/architecture.md](docs/architecture.md)）。
 
-| 层级 | 通用默认 | StoryBoard AI 实际 |
+| 层级 | 通用默认 | StoryPop 实际 |
 |------|---------|--------------------|
 | 前端 | Next.js | React 18 + TypeScript（Chrome MV3 Side Panel） |
 | 构建 | — | Vite + `@crxjs/vite-plugin` |

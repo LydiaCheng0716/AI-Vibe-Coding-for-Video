@@ -1,9 +1,9 @@
 {
-  "name": "storyboard-ai",
+  "name": "storypop",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "StoryBoard AI — Chrome 侧边栏插件：把口语化故事转成结构化分镜与提示词（BYOK，纯客户端）",
+  "description": "StoryPop — Chrome 侧边栏插件：把口语化故事转成结构化分镜与提示词（BYOK，纯客户端）",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

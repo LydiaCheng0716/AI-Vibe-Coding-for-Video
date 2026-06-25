@@ -8,11 +8,11 @@ import pkg from './package.json';
 // optional_host_permissions 与 services/permissions.requestHostPermission（TASK-002 post-review 补齐）。
 export default defineManifest({
   manifest_version: 3,
-  name: 'StoryBoard AI',
+  name: 'StoryPop',
   version: pkg.version,
   description: pkg.description,
   side_panel: { default_path: 'index.html' },
-  action: { default_title: 'StoryBoard AI' },
+  action: { default_title: 'StoryPop' },
   background: { service_worker: 'src/background.ts', type: 'module' },
   permissions: ['sidePanel', 'storage'],
   host_permissions: ['https://api.openai.com/*', 'https://api.anthropic.com/*'],

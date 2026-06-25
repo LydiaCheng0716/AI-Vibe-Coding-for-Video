@@ -29,7 +29,7 @@
 
 ## 0. 说明：本产品没有服务端数据库
 
-StoryBoard AI 是 **纯客户端、无账号** 的 Chrome 插件（见 [architecture.md](architecture.md) 第 0 节、ADR-0）。因此：
+StoryPop 是 **纯客户端、无账号** 的 Chrome 插件（见 [architecture.md](architecture.md) 第 0 节、ADR-0）。因此：
 
 - **不存在服务端关系型数据库**，原模板里的 `users`、`sessions` 表 **不适用**，已删除（产品无账号、无服务端会话，那两张表是模板默认值，与本产品定位冲突）。
 - 「数据设计」实际落在 **浏览器本地存储**：`chrome.storage.local` + IndexedDB。
