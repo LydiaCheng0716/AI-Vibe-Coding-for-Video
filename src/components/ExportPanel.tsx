@@ -7,7 +7,7 @@ interface Props {
   project: Project | null;
 }
 
-const FORMATS: ExportFormat[] = ['markdown', 'json', 'plaintext'];
+const FORMATS: ExportFormat[] = ['markdown', 'json', 'plaintext', 'csv', 'platform'];
 const PROMPT_LANGS: { value: ExportPromptLang; label: string }[] = [
   { value: 'both', label: '中英两版' },
   { value: 'zh', label: '仅中文' },
@@ -26,6 +26,14 @@ export default function ExportPanel({ project }: Props) {
     if (!r.ok) return setNotice(r.error.message);
     const c = await copyToClipboard(r.data);
     setNotice(c.ok ? '已复制导出内容' : c.error.message);
+  }
+
+  // 一键复制全部提示词（平台排版，粘贴即用）。
+  async function onCopyAllPrompts() {
+    const r = exportProject(project, 'platform', promptLang);
+    if (!r.ok) return setNotice(r.error.message);
+    const c = await copyToClipboard(r.data);
+    setNotice(c.ok ? '已复制全部提示词' : c.error.message);
   }
 
   function onDownload() {
@@ -90,6 +98,13 @@ export default function ExportPanel({ project }: Props) {
           下载
         </button>
       </div>
+      <button
+        type="button"
+        onClick={onCopyAllPrompts}
+        className="self-start rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50"
+      >
+        复制全部提示词
+      </button>
       {notice && <p className="text-xs text-gray-600">{notice}</p>}
     </div>
   );

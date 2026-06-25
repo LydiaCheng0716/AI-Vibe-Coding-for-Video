@@ -3,7 +3,7 @@
 // 这些存于 settings/keyVault，不在 Project，故导出天然不泄露凭据。
 import { ok, err, type Result, type Project, type Character, type Shot } from './models';
 
-export type ExportFormat = 'markdown' | 'json' | 'plaintext';
+export type ExportFormat = 'markdown' | 'json' | 'plaintext' | 'csv' | 'platform';
 
 /** 导出提示词语言选择（Issue #41）：仅对双语镜头（含 promptEn）生效；单语任何值都回退 prompt。 */
 export type ExportPromptLang = 'zh' | 'en' | 'both';
@@ -23,6 +23,8 @@ export const EXPORT_META: Record<ExportFormat, { ext: string; mime: string; labe
   markdown: { ext: 'md', mime: 'text/markdown', label: 'Markdown' },
   json: { ext: 'json', mime: 'application/json', label: 'JSON' },
   plaintext: { ext: 'txt', mime: 'text/plain', label: '纯文本' },
+  csv: { ext: 'csv', mime: 'text/csv', label: 'CSV 分镜表' },
+  platform: { ext: 'txt', mime: 'text/plain', label: '平台排版（提示词）' },
 };
 
 function charLabel(c: Character, i: number): string {
@@ -109,9 +111,56 @@ function toPlaintext(p: Project, lang: ExportPromptLang): string {
   return parts.join('\n').trimEnd() + '\n';
 }
 
+// ---- CSV 分镜表（Issue #34）----
+
+/**
+ * CSV 单元格转义。
+ * 1) 公式注入防护（Codex P2）：以 = + - @（或 TAB/CR）开头的单元格在表格软件里会被当公式执行，
+ *    用户/模型生成的提示词可能含这些前缀 → 加单引号前缀中和，使其当纯文本。
+ * 2) 含 " , 换行 → 双引号包裹，内部 " → ""。
+ */
+function csvCell(v: string): string {
+  const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
+function toCsv(p: Project): string {
+  const bilingual = p.shots.some((s) => s.promptEn);
+  const header = ['镜头', '景别', '运镜', '时长', '提示词', ...(bilingual ? ['英文提示词'] : [])];
+  const rows = p.shots.map((s) =>
+    [
+      String(s.index),
+      s.shotSize,
+      s.cameraMovement,
+      s.durationSuggestion,
+      s.prompt,
+      ...(bilingual ? [s.promptEn ?? ''] : []),
+    ]
+      .map(csvCell)
+      .join(','),
+  );
+  return [header.map(csvCell).join(','), ...rows].join('\r\n') + '\r\n';
+}
+
+// ---- 平台排版（Issue #34）：粘贴即用的纯提示词块，适配可灵/即梦 ----
+
+function toPlatform(p: Project, lang: ExportPromptLang): string {
+  const parts: string[] = [];
+  p.shots.forEach((s) => {
+    parts.push(`【镜头 ${s.index}】${s.summary}`);
+    shotPromptParts(s, lang).forEach((part) =>
+      parts.push(part.label ? `[${part.label}] ${part.text}` : part.text),
+    );
+    parts.push('');
+  });
+  if (p.bgm) parts.push(`【BGM】${p.bgm.prompt}`);
+  return parts.join('\n').trimEnd() + '\n';
+}
+
 /**
  * 导出当前项目为指定格式。无分镜 → NOTHING_TO_EXPORT。
- * promptLang（Issue #41）：双语镜头按语言选择渲染；JSON 始终含完整 shot（含 promptEn）。
+ * promptLang（Issue #41）：双语镜头按语言选择渲染；JSON 始终含完整 shot（含 promptEn）；
+ * CSV 双语列恒含两版。
  */
 export function exportProject(
   project: Project | null,
@@ -128,5 +177,9 @@ export function exportProject(
       return ok(toMarkdown(project, promptLang));
     case 'plaintext':
       return ok(toPlaintext(project, promptLang));
+    case 'csv':
+      return ok(toCsv(project));
+    case 'platform':
+      return ok(toPlatform(project, promptLang));
   }
 }
