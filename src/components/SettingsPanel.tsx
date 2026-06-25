@@ -4,6 +4,7 @@ import { getSettings, saveSettings } from '../services/storage';
 import { saveApiKey, getMaskedApiKey, clearApiKey } from '../services/keyVault';
 import { defaultSettings } from '../core/defaults';
 import { originForProvider, hasHostPermission, requestHostPermission } from '../services/permissions';
+import { PROVIDER_PRESETS, applyPreset, presetIdForProvider, getPreset } from '../core/providerPresets';
 
 const VIDEO_MODELS: VideoModel[] = ['generic', 'jimeng', 'keling', 'sora', 'runway'];
 const ASPECTS = ['16:9', '9:16', '1:1'];
@@ -107,16 +108,25 @@ export default function SettingsPanel() {
       <div className="flex flex-col gap-2">
         <h3 className="text-xs font-medium text-gray-700">LLM Provider（自带 Key）</h3>
         <label className="text-xs">
-          类型
+          预设（选中即填好 Base URL 与默认模型，可再手改）
           <select
             className="mt-1 w-full rounded border border-gray-300 p-1 text-sm"
-            value={settings.provider.kind}
-            onChange={(e) => patchProvider({ kind: e.target.value as Settings['provider']['kind'] })}
+            value={presetIdForProvider(settings.provider)}
+            onChange={(e) => {
+              const preset = getPreset(e.target.value);
+              if (preset) setSettings((s) => ({ ...s, provider: applyPreset(s.provider, preset) }));
+            }}
           >
-            <option value="openai-compatible">OpenAI 兼容</option>
-            <option value="anthropic">Anthropic</option>
+            {PROVIDER_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
           </select>
         </label>
+        <p className="text-[11px] leading-snug text-amber-700">
+          Kimi 编程版（kimi.com/code）的 Key 仅限编程工具，不能用于此处。
+        </p>
         {settings.provider.kind === 'openai-compatible' && (
           <label className="text-xs">
             Base URL（https://，可选）
