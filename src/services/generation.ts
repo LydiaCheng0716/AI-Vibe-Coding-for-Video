@@ -373,6 +373,8 @@ export interface TransitionInput {
   nextShot: Shot;
   /** 转场类型 id（core/transitions）。 */
   type: string;
+  /** 输出语言：应传**当前项目**的语言，而非 settings（用户可能改过设置，Codex P2）。 */
+  lang?: OutputLanguage;
   apiKey?: string;
 }
 
@@ -384,7 +386,7 @@ export async function generateTransitionAttempt(
   const pre = await preflightProvider(deps, input.apiKey);
   if (!pre.ok) return pre;
   const { settings, apiKey } = pre.data;
-  const lang = settings.params.outputLanguage;
+  const lang = input.lang ?? settings.params.outputLanguage;
 
   const { system, user } = buildTransitionPrompt(input.prevShot, input.nextShot, input.type, lang);
   const ctrl = new AbortController();

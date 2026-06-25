@@ -72,7 +72,7 @@ function TransitionBar({
     if (busy || gen) return;
     setGen(true);
     setNotice(null);
-    const r = await generateTransition({ prevShot: prev, nextShot: next, type, apiKey });
+    const r = await generateTransition({ prevShot: prev, nextShot: next, type, lang, apiKey });
     setGen(false);
     if (!r.ok) {
       setNotice(r.error.message);
@@ -87,7 +87,8 @@ function TransitionBar({
 
   async function onSaveNote() {
     if (!t) return;
-    const save = await updateShotTransition(prev.id, { type: t.type, note, ...(bilingual && noteEn ? { noteEn } : {}) });
+    // 用当前选中的 type（用户可能改了下拉再编辑），而非旧 prop 的 t.type（Codex P2）。
+    const save = await updateShotTransition(prev.id, { type, note, ...(bilingual && noteEn ? { noteEn } : {}) });
     if (save.ok && save.data) {
       onUpdated(save.data);
       setNotice('已保存');

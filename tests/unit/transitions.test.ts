@@ -100,6 +100,14 @@ describe('generateTransition', () => {
     const r = await generateTransitionAttempt({ prevShot: prev, nextShot: next, type: 'match' }, deps);
     if (r.ok) expect(r.data.noteEn).toBe('match');
   });
+  it('input.lang 覆盖 settings（用项目语言，Codex P2）', async () => {
+    // settings 是单语 zh，但项目语言为 zh-en → 应走双语、解析出 noteEn
+    const { deps } = makeDeps({}, vi.fn().mockResolvedValue('{"note":"承接","noteEn":"match"}'));
+    const r = await generateTransitionAttempt({ prevShot: prev, nextShot: next, type: 'match', lang: 'zh-en' }, deps);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.noteEn).toBe('match');
+  });
+
   it('前置失败（无 Key）→ 不发', async () => {
     const { deps, createProvider } = makeDeps({ hasApiKey: vi.fn().mockResolvedValue(false), getApiKeyForRequest: vi.fn().mockResolvedValue(null) });
     const r = await generateTransitionAttempt({ prevShot: prev, nextShot: next, type: 'cut' }, deps);
