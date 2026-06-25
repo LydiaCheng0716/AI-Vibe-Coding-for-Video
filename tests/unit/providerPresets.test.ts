@@ -64,14 +64,13 @@ describe('applyPreset（选中即填，纯函数不可变）', () => {
     expect(out.baseUrl).toBeUndefined();
   });
 
-  it('自定义：kind openai-compatible 且清空 baseUrl/model 回到全手填空白态', () => {
-    // 清空是必须的：下拉选中项由 provider 反推，若保留命中预设的 baseUrl 会弹回该预设。
+  it('自定义：清空 baseUrl 但保留 model；反推稳定为 custom（不弹回原预设）', () => {
     const fromPreset: ProviderConfig = { kind: 'openai-compatible', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' };
     const out = applyPreset(fromPreset, getPreset('custom')!);
     expect(out.kind).toBe('openai-compatible');
     expect(out.baseUrl).toBeUndefined();
-    expect(out.model).toBe('');
-    // 反推稳定为 custom（不弹回 moonshot）
+    expect(out.model).toBe('moonshot-v1-8k'); // 保留用户已填模型名（Kimi minor）
+    // baseUrl 清空 → 不再命中 moonshot，稳定反推为 custom
     expect(presetIdForProvider(out)).toBe('custom');
   });
 

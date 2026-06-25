@@ -31,7 +31,7 @@ BYOK 配置门槛高：Base URL / 模型名 / 平台（moonshot.cn vs .ai）全�
 | `deepseek` | DeepSeek | openai-compatible | `https://api.deepseek.com/v1` | `deepseek-chat` |
 | `openai` | OpenAI | openai-compatible | `https://api.openai.com/v1` | `gpt-4o-mini` |
 | `zhipu` | 智谱 | openai-compatible | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |
-| `custom` | 自定义(OpenAI 兼容) | openai-compatible | —（不自动填） | —（不覆盖） |
+| `custom` | 自定义(OpenAI 兼容) | openai-compatible | —（清空 baseUrl） | —（保留已填 model） |
 | `anthropic` | Anthropic | anthropic | —（固定官方域名） | `claude-3-5-haiku-latest` |
 
 > 默认模型选「便宜/广泛可用」的入门款，均为可手改占位；不硬编码到 defaults（ADR-4 仍是空串默认）。
@@ -39,7 +39,7 @@ BYOK 配置门槛高：Base URL / 模型名 / 平台（moonshot.cn vs .ai）全�
 ### 2.2 选中即填（`applyPreset`，纯函数、不可变）
 - 普通预设：`{ ...provider, kind, baseUrl: preset.baseUrl, model: preset.defaultModel }` —— **model 一律覆盖为该预设默认值**，杜绝「残留上一个错模型」（验收点）。
 - Anthropic：`{ ...provider, kind: 'anthropic', baseUrl: undefined, model: defaultModel }`（清掉无意义的 baseUrl）。
-- 自定义：`{ ...provider, kind: 'openai-compatible', baseUrl: undefined, model: '' }` —— 回到「全手填」空白态。**必须清空**：下拉选中项由 `presetIdForProvider` 反推，若保留命中某预设的 baseUrl，下拉会立刻弹回那个预设、令「选自定义」无效（对抗性自检发现）。
+- 自定义：`{ ...provider, kind: 'openai-compatible', baseUrl: undefined }` —— 只清 `baseUrl`（回「全手填」），**保留 `model`**。清 baseUrl 是必须的：下拉选中项由 `presetIdForProvider` 反推（仅看 baseUrl），若保留命中某预设的 baseUrl，下拉会立刻弹回那个预设、令「选自定义」无效（对抗性自检发现）；保留 model 是为了不丢用户已填的模型名（Kimi 外门 minor）。
 - 始终 `...provider` 透传 `grantedOrigins`，不丢已授权域名。
 
 ### 2.3 下拉回显（`presetIdForProvider`，纯函数）
@@ -66,7 +66,7 @@ manifest 已有 `optional_host_permissions: ['https://*/*']`。选中 moonshot.c
 - 预设清单含 7 项且顺序/baseUrl/defaultModel 正确；含 `custom`、`anthropic`。
 - `applyPreset(moonshot-cn)` → openai-compatible + 对应 baseUrl + `moonshot-v1-8k`。
 - `applyPreset(anthropic)` → kind anthropic + 默认模型 + baseUrl 清空。
-- `applyPreset(custom)` → kind openai-compatible 且 **保留**入参 baseUrl/model。
+- `applyPreset(custom)` → kind openai-compatible，**清空 baseUrl**（`undefined`）但**保留 model**；反推稳定为 `custom`。
 - 切换预设覆盖 model：deepseek → openai，model 变为 `gpt-4o-mini`（不残留 `deepseek-chat`）。
 - `applyPreset` 透传 `grantedOrigins`。
 - `presetIdForProvider`：moonshot 含/不含尾斜杠都命中；anthropic 按 kind；空/未知 baseUrl → `custom`。

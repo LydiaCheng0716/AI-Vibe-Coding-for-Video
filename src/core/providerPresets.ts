@@ -17,7 +17,8 @@ export interface ProviderPreset {
 export const CUSTOM_PRESET_ID = 'custom';
 
 // 顺序对齐 Issue #27 正文。默认模型取「便宜 / 广泛可用」入门款，均为可手改占位。
-export const PROVIDER_PRESETS: ProviderPreset[] = [
+// 冻结为只读：避免任何消费方误改全局清单导致 presetIdForProvider 反推错乱（Kimi 外门 minor）。
+export const PROVIDER_PRESETS: readonly ProviderPreset[] = Object.freeze([
   { id: 'moonshot-cn', label: 'Moonshot(.cn)', kind: 'openai-compatible', baseUrl: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k' },
   { id: 'moonshot-ai', label: 'Moonshot(.ai)', kind: 'openai-compatible', baseUrl: 'https://api.moonshot.ai/v1', defaultModel: 'moonshot-v1-8k' },
   { id: 'deepseek', label: 'DeepSeek', kind: 'openai-compatible', baseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
@@ -25,7 +26,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   { id: 'zhipu', label: '智谱', kind: 'openai-compatible', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-4-flash' },
   { id: CUSTOM_PRESET_ID, label: '自定义(OpenAI 兼容)', kind: 'openai-compatible', defaultModel: '' },
   { id: 'anthropic', label: 'Anthropic', kind: 'anthropic', defaultModel: 'claude-3-5-haiku-latest' },
-];
+]);
 
 export function getPreset(id: string): ProviderPreset | undefined {
   return PROVIDER_PRESETS.find((p) => p.id === id);
@@ -40,13 +41,13 @@ function normalizeBaseUrl(url: string | undefined): string {
  * 选中预设 → 新 ProviderConfig（不可变、透传 grantedOrigins，不丢已授权域名）。
  * - 普通预设：覆盖 kind/baseUrl/model（model 一律覆盖，杜绝残留上一个错模型）。
  * - anthropic：固定官方域名，清掉无意义的 baseUrl。
- * - custom：清空 baseUrl/model 回到「全手填」空白态。必须清空——下拉选中项是由 provider
- *   反推的（presetIdForProvider），若保留命中某预设的 baseUrl，下拉会立刻弹回那个预设、
- *   导致「选自定义」无效。清空后 baseUrl 为空 → 稳定反推为 custom。
+ * - custom：清空 baseUrl 回到「全手填」。只清 baseUrl 即可——下拉选中项由 provider 反推
+ *   （presetIdForProvider 仅看 baseUrl），清空后稳定反推为 custom，不会弹回原预设。
+ *   **保留 model**：避免用户切到自定义时丢掉已填的模型名（Kimi 外门 minor）。
  */
 export function applyPreset(provider: ProviderConfig, preset: ProviderPreset): ProviderConfig {
   if (preset.id === CUSTOM_PRESET_ID) {
-    return { ...provider, kind: 'openai-compatible', baseUrl: undefined, model: '' };
+    return { ...provider, kind: 'openai-compatible', baseUrl: undefined };
   }
   if (preset.kind === 'anthropic') {
     return { ...provider, kind: 'anthropic', baseUrl: undefined, model: preset.defaultModel };
