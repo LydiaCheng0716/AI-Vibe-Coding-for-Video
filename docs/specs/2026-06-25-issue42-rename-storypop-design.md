@@ -20,5 +20,5 @@
 
 ## 3. 验收
 - 构建出的 `dist/manifest.json` name = `StoryPop`；侧边栏/设置/面板文案为 StoryPop。
-- `npm run lint && test && build` 全绿；`npm ci` 一致（package-lock 同步）。
+- `npm run lint && npm run test && npm run build` 全绿；`npm ci` 一致（package-lock 同步）。
 - 全仓 `grep -ri "storyboard"` 仅余通用词/代码标识符，无残留产品名 `StoryBoard AI`。
