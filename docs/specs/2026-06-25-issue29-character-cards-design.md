@@ -91,6 +91,7 @@ export interface Character {
 - 「新增角色」按钮（空档案卡）。多角色各自独立卡、独立调校。
 - 放在 `ShotList` 之上（角色先于镜头）；锁定/编辑后更新内存态并落库 + 重注入。
 - 与 `subscribeLlmBusy` 协同：生成/建议进行中禁用「重新建议」。
+- **不落盘模式**（`persistApiKey=false`）：面板顶部渲染一次性 Key 输入，作为 override 透传给 `suggestCharacterField`、永不保存——否则该模式下「重新建议」恒 `NO_API_KEY`（Codex 外门 P2，与生成区/测试连接一致）。
 
 ---
 

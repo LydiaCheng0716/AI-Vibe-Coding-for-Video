@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Character, CharacterFieldKey, CharacterProfile, OutputLanguage, Project } from '../core/models';
 import { CHARACTER_FIELD_KEYS, CHARACTER_FIELD_LABELS, emptyProfile } from '../core/characterProfile';
-import { updateCharacter, addCharacter } from '../services/storage';
+import { updateCharacter, addCharacter, getSettings } from '../services/storage';
 import { suggestCharacterField } from '../services/characterSuggest';
 import { copyToClipboard } from '../services/clipboard';
 
@@ -32,6 +32,23 @@ export default function CharacterPanel({
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // 不保存 Key 模式（ADR-1 #8）：persist=false 时「重新建议」需一次性 Key（不落盘），与生成区一致。
+  const [persistKey, setPersistKey] = useState(true);
+  const [tempKey, setTempKey] = useState('');
+
+  useEffect(() => {
+    let on = true;
+    getSettings()
+      .then((s) => {
+        if (on) setPersistKey(s.persistApiKey);
+      })
+      .catch(() => {
+        /* 读取失败按默认保存模式 */
+      });
+    return () => {
+      on = false;
+    };
+  }, []);
 
   async function onAdd() {
     setAdding(true);
@@ -56,6 +73,16 @@ export default function CharacterPanel({
         </button>
       </div>
       {notice && <p className="text-xs text-red-600">{notice}</p>}
+      {!persistKey && (
+        <input
+          type="password"
+          autoComplete="off"
+          className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
+          placeholder="一次性 API Key（已关闭保存，仅用于「重新建议」，不落盘）"
+          value={tempKey}
+          onChange={(e) => setTempKey(e.target.value)}
+        />
+      )}
       {characters.map((c) => (
         <CharacterCard
           key={c.id}
@@ -63,6 +90,7 @@ export default function CharacterPanel({
           story={story}
           lang={lang}
           busy={busy}
+          apiKey={persistKey ? undefined : tempKey.trim() || undefined}
           onProjectUpdated={onProjectUpdated}
         />
       ))}
@@ -75,10 +103,12 @@ interface CardProps {
   story: string;
   lang: OutputLanguage;
   busy: boolean;
+  /** 不保存 Key 模式的一次性 Key（透传给「重新建议」服务，不落盘）。 */
+  apiKey?: string;
   onProjectUpdated: (project: Project) => void;
 }
 
-function CharacterCard({ character, story, lang, busy, onProjectUpdated }: CardProps) {
+function CharacterCard({ character, story, lang, busy, apiKey, onProjectUpdated }: CardProps) {
   const labels = CHARACTER_FIELD_LABELS[lang] ?? CHARACTER_FIELD_LABELS.zh;
   const locked = !!character.locked;
   // 档案草稿（本地编辑态）：从 props 播种一次（卡片以 id 为 key，角色切换即重挂载）。
@@ -117,7 +147,7 @@ function CharacterCard({ character, story, lang, busy, onProjectUpdated }: CardP
     if (busy || locked) return;
     setResuggesting(key);
     setNotice(null);
-    const r = await suggestCharacterField({ character: { ...character, profile }, field: key, story });
+    const r = await suggestCharacterField({ character: { ...character, profile }, field: key, story, apiKey });
     setResuggesting(null);
     if (r.ok) {
       // 仅更新该字段候选，不动其它字段/角色。
