@@ -238,3 +238,14 @@ describe('exportProject: 首帧图像提示词（Issue #57）', () => {
     if (json.ok) expect(json.data).toContain('firstFramePrompt');
   });
 })
+
+describe('exportProject: 双语首帧 CSV 列（Codex P2 #57）', () => {
+  it('有 firstFramePromptEn → CSV 加英文首帧列', () => {
+    const p = mkProject({ shots: [mkShot(1, { firstFramePrompt: '中首帧', firstFramePromptEn: 'EN frame' }), mkShot(2), mkShot(3)] });
+    const r = exportProject(p, 'csv');
+    if (r.ok) {
+      expect(r.data.split('\r\n')[0]).toContain('英文首帧提示词');
+      expect(r.data).toContain('EN frame');
+    }
+  });
+})

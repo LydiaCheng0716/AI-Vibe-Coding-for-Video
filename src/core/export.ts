@@ -181,6 +181,7 @@ function toCsv(p: Project): string {
   const bilingual = p.shots.some((s) => s.promptEn);
   const hasTransition = p.shots.some((s) => s.transitionToNext);
   const hasFirstFrame = p.shots.some((s) => s.firstFramePrompt);
+  const hasFirstFrameEn = p.shots.some((s) => s.firstFramePromptEn);
   const header = [
     '镜头',
     '景别',
@@ -189,6 +190,7 @@ function toCsv(p: Project): string {
     '提示词',
     ...(bilingual ? ['英文提示词'] : []),
     ...(hasFirstFrame ? ['首帧图像提示词'] : []),
+    ...(hasFirstFrameEn ? ['英文首帧提示词'] : []),
     ...(hasTransition ? ['转场(至下一镜)'] : []),
   ];
   const rows = p.shots.map((s) =>
@@ -200,6 +202,7 @@ function toCsv(p: Project): string {
       s.prompt,
       ...(bilingual ? [s.promptEn ?? ''] : []),
       ...(hasFirstFrame ? [s.firstFramePrompt ?? ''] : []),
+      ...(hasFirstFrameEn ? [s.firstFramePromptEn ?? ''] : []),
       ...(hasTransition ? [transitionCsv(s, p)] : []),
     ]
       .map(csvCell)
