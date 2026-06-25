@@ -98,6 +98,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
         setNotice(r.error.message);
       }
     } finally {
+      if (!persistApiKey) setTempKey(''); // 一次性 Key 用完即弃，异常路径也清（Codex P3）
       rewritingRef.current = false;
       setRewriting(false);
     }

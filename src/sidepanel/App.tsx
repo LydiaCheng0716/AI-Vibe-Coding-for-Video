@@ -26,6 +26,18 @@ export default function App() {
       .catch(() => {
         /* 读取失败：从空开始，不影响使用 */
       });
+    const unsub = subscribeLlmBusy(setBusy);
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, []);
+
+  // 在「返回主界面」时刷新「是否保存 Key」：用户可能刚在设置里改了该开关并清了 Key
+  // （Codex P2：仅 mount 读会导致开关变更后单镜头重写恒 NO_API_KEY）。初次挂载也会跑（showSettings=false）。
+  useEffect(() => {
+    if (showSettings) return;
+    let alive = true;
     getSettings()
       .then((s) => {
         if (alive) setPersistApiKey(s.persistApiKey);
@@ -33,12 +45,10 @@ export default function App() {
       .catch(() => {
         /* 读取失败按默认保存模式 */
       });
-    const unsub = subscribeLlmBusy(setBusy);
     return () => {
       alive = false;
-      unsub();
     };
-  }, []);
+  }, [showSettings]);
 
   // 单镜头变更（手动保存 / 重写 / 撤销）后整条替换该镜头（storage 已落库）。
   function onShotChanged(shot: Shot) {
