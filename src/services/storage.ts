@@ -207,6 +207,37 @@ export async function addCharacter(input: Omit<Character, 'id'>): Promise<Result
 }
 
 /**
+ * 设置/清除某镜首帧图像提示词（Issue #57）：projectLock 内 RMW，传 null 清除。
+ * 无项目/无匹配 → ok(null)。返回更新后 Project。
+ */
+export async function updateShotFirstFrame(
+  shotId: string,
+  firstFrame: { firstFramePrompt: string; firstFramePromptEn?: string } | null,
+): Promise<Result<Project | null>> {
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return ok(null);
+    let hit = false;
+    const shots = project.shots.map((s) => {
+      if (s.id !== shotId) return s;
+      hit = true;
+      const { firstFramePrompt: _a, firstFramePromptEn: _b, ...rest } = s;
+      if (!firstFrame) return rest;
+      return {
+        ...rest,
+        firstFramePrompt: firstFrame.firstFramePrompt,
+        ...(firstFrame.firstFramePromptEn ? { firstFramePromptEn: firstFrame.firstFramePromptEn } : {}),
+      };
+    });
+    if (!hit) return ok(null);
+    const next = { ...project, shots };
+    const saved = await doSaveProject(next);
+    if (!saved.ok) return saved;
+    return ok(next);
+  });
+}
+
+/**
  * 设置/清除某镜「→下一镜」转场（Issue #54）：projectLock 内 RMW，transition=null 清除。
  * 无项目/无匹配 → ok(null)。返回更新后 Project。
  */

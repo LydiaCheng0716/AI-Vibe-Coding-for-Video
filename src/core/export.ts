@@ -60,10 +60,27 @@ function toJson(p: Project): string {
   );
 }
 
+/** 首帧图像提示词按导出语言分段（Issue #57）；无 → []。 */
+function firstFrameParts(s: Shot, lang: ExportPromptLang): Array<{ label: string | null; text: string }> {
+  if (!s.firstFramePrompt) return [];
+  if (!s.firstFramePromptEn) return [{ label: null, text: s.firstFramePrompt }];
+  if (lang === 'zh') return [{ label: null, text: s.firstFramePrompt }];
+  if (lang === 'en') return [{ label: null, text: s.firstFramePromptEn }];
+  return [
+    { label: '中文', text: s.firstFramePrompt },
+    { label: 'English', text: s.firstFramePromptEn },
+  ];
+}
+
 function shotMd(s: Shot, lang: ExportPromptLang): string {
   const promptBlocks = shotPromptParts(s, lang).flatMap((part) =>
     part.label ? [`**${part.label}**`, ...codeBlock(part.text)] : codeBlock(part.text),
   );
+  const ffParts = firstFrameParts(s, lang);
+  const ffBlocks =
+    ffParts.length > 0
+      ? ['', '**首帧图像提示词**', ...ffParts.flatMap((p) => (p.label ? [`*${p.label}*`, ...codeBlock(p.text)] : codeBlock(p.text)))]
+      : [];
   return [
     `### 镜头 ${s.index}：${s.summary}`,
     `- 景别：${s.shotSize}`,
@@ -71,6 +88,7 @@ function shotMd(s: Shot, lang: ExportPromptLang): string {
     `- 时长：${s.durationSuggestion}`,
     '',
     ...promptBlocks,
+    ...ffBlocks,
   ].join('\n');
 }
 
@@ -109,10 +127,14 @@ function shotText(s: Shot, lang: ExportPromptLang): string {
   const promptLines = shotPromptParts(s, lang).map((part) =>
     part.label ? `提示词（${part.label}）：${part.text}` : `提示词：${part.text}`,
   );
+  const ffLines = firstFrameParts(s, lang).map((part) =>
+    part.label ? `首帧（${part.label}）：${part.text}` : `首帧图像提示词：${part.text}`,
+  );
   return [
     `镜头 ${s.index}：${s.summary}`,
     `景别：${s.shotSize}　运镜：${s.cameraMovement}　时长：${s.durationSuggestion}`,
     ...promptLines,
+    ...ffLines,
   ].join('\n');
 }
 
@@ -158,6 +180,8 @@ function transitionCsv(s: Shot, p: Project): string {
 function toCsv(p: Project): string {
   const bilingual = p.shots.some((s) => s.promptEn);
   const hasTransition = p.shots.some((s) => s.transitionToNext);
+  const hasFirstFrame = p.shots.some((s) => s.firstFramePrompt);
+  const hasFirstFrameEn = p.shots.some((s) => s.firstFramePromptEn);
   const header = [
     '镜头',
     '景别',
@@ -165,6 +189,8 @@ function toCsv(p: Project): string {
     '时长',
     '提示词',
     ...(bilingual ? ['英文提示词'] : []),
+    ...(hasFirstFrame ? ['首帧图像提示词'] : []),
+    ...(hasFirstFrameEn ? ['英文首帧提示词'] : []),
     ...(hasTransition ? ['转场(至下一镜)'] : []),
   ];
   const rows = p.shots.map((s) =>
@@ -175,6 +201,8 @@ function toCsv(p: Project): string {
       s.durationSuggestion,
       s.prompt,
       ...(bilingual ? [s.promptEn ?? ''] : []),
+      ...(hasFirstFrame ? [s.firstFramePrompt ?? ''] : []),
+      ...(hasFirstFrameEn ? [s.firstFramePromptEn ?? ''] : []),
       ...(hasTransition ? [transitionCsv(s, p)] : []),
     ]
       .map(csvCell)
