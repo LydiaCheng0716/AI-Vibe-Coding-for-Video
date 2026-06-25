@@ -171,7 +171,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
           <select
             className="rounded border border-gray-300 p-1 text-xs disabled:opacity-50"
             value={shot.shotSize}
-            disabled={disabled}
+            disabled={disabled || editing}
             onChange={(e) => changeParam('shotSize', e.target.value)}
           >
             {withCurrent(shotSizeOptions(lang), shot.shotSize).map((o) => (
@@ -186,7 +186,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
           <select
             className="rounded border border-gray-300 p-1 text-xs disabled:opacity-50"
             value={shot.cameraMovement}
-            disabled={disabled}
+            disabled={disabled || editing}
             onChange={(e) => changeParam('cameraMovement', e.target.value)}
           >
             {withCurrent(cameraMovementOptions(lang), shot.cameraMovement).map((o) => (
@@ -201,7 +201,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
           <select
             className="rounded border border-gray-300 p-1 text-xs disabled:opacity-50"
             value={shot.durationSuggestion}
-            disabled={disabled}
+            disabled={disabled || editing}
             onChange={(e) => changeParam('durationSuggestion', e.target.value)}
           >
             {withCurrent(DURATION_OPTIONS, shot.durationSuggestion).map((o) => (
