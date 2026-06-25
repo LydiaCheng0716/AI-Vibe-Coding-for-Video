@@ -11,8 +11,8 @@ import {
 interface Props {
   /** 当前项目（可保存为草稿）。 */
   project: Project | null;
-  /** 打开草稿后恢复（App 同时置为 currentProject）。 */
-  onOpen: (project: Project) => void;
+  /** 打开草稿后恢复（App 置为 currentProject）；返回是否成功（落盘失败 → false）。 */
+  onOpen: (project: Project) => Promise<boolean>;
 }
 
 export default function DraftsPanel({ project, onOpen }: Props) {
@@ -45,13 +45,13 @@ export default function DraftsPanel({ project, onOpen }: Props) {
 
   async function onOpenDraft(id: string) {
     const p = await openProjectDraft(id);
-    if (p) {
-      onOpen(p);
-      setNotice('已打开草稿');
-    } else {
+    if (!p) {
       setNotice('草稿不存在。');
       await reload();
+      return;
     }
+    const switched = await onOpen(p);
+    setNotice(switched ? '已打开草稿' : '打开失败：本地保存出错，请重试。');
   }
 
   async function onDelete(id: string) {

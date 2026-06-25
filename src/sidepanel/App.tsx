@@ -72,10 +72,13 @@ export default function App() {
     setProject((prev) => (prev ? { ...prev, characters: [...prev.characters, character] } : prev));
   }
 
-  // 打开历史草稿（Issue #35）：置为 currentProject（使后续单镜头/角色编辑作用于该草稿）+ 恢复内存态。
-  async function onOpenDraft(p: Project) {
-    await saveCurrentProject(p);
+  // 打开历史草稿（Issue #35）：先置为 currentProject 成功，再切 UI——否则后续单镜头/角色编辑会
+  // 作用在旧 currentProject 上而 UI 显示新草稿（Codex P2）。落盘失败则不切，返回 false 让 UI 报错。
+  async function onOpenDraft(p: Project): Promise<boolean> {
+    const r = await saveCurrentProject(p);
+    if (!r.ok) return false;
     setProject(p);
+    return true;
   }
 
   return (
