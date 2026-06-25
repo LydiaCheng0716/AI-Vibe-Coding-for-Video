@@ -186,6 +186,8 @@ AFK 工作流对每条 Issue 走 `feature/issue-NN-*` 分支：CI 绿 + CTO 自�
 
 **StoryPop 由 [FireUG / SSW TV](https://fireusergroup.com/) 开发制作。**
 
+**主要作者（FireUG）：Lydia · Alvin 304 · Thom。**
+
 © 2026 FireUG（SSW TV）。**保留所有权利（All Rights Reserved）。**
 
 - 本仓库及 StoryPop 的源代码、设计文档、品牌名称与标识（FireUG / SSW TV / StoryPop 及其 Logo）均为 FireUG（SSW TV）的财产。

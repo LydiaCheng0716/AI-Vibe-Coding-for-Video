@@ -5,6 +5,11 @@
   "type": "module",
   "description": "StoryPop — Chrome 侧边栏插件：把口语化故事转成结构化分镜与提示词（BYOK，纯客户端）",
   "author": "FireUG (SSW TV) (https://fireusergroup.com/)",
+  "contributors": [
+    "Lydia (FireUG)",
+    "Alvin 304 (FireUG)",
+    "Thom (FireUG)"
+  ],
   "license": "UNLICENSED",
   "scripts": {
     "dev": "vite",
