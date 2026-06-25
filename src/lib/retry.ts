@@ -16,6 +16,8 @@ export interface RetryOptions {
   sleep?: (ms: number) => Promise<void>;
   /** 注入点：返回 [0,1) 的随机数。 */
   jitter?: () => number;
+  /** 进度回调（Issue #33）：每次尝试发起前调用，attempt 从 1 起，maxAttempts = maxRetries+1。 */
+  onAttempt?: (attempt: number, maxAttempts: number) => void;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -34,7 +36,10 @@ export async function withRetry<T>(
   const maxDelay = opts.maxDelayMs ?? 60_000;
   const sleep = opts.sleep ?? defaultSleep;
   const jitter = opts.jitter ?? Math.random;
+  const maxAttempts = maxRetries + 1;
+  const onAttempt = opts.onAttempt;
 
+  onAttempt?.(1, maxAttempts);
   let last: Result<T> = await attempt();
   for (let i = 0; i < maxRetries; i++) {
     if (last.ok || !last.error.retriable) return last;
@@ -42,6 +47,7 @@ export async function withRetry<T>(
     // retryAfterMs 优先，但封顶 maxDelay，防恶意/异常 Retry-After 让锁长期挂起（kimi MED）。
     const delay = Math.min(last.error.retryAfterMs ?? backoff, maxDelay);
     await sleep(delay);
+    onAttempt?.(i + 2, maxAttempts);
     last = await attempt();
   }
   return last;

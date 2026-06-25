@@ -246,3 +246,28 @@ describe('generateStoryboard: 成功与出站失败', () => {
     if (!r.ok) expect(r.error.code).toBe('STORAGE_WRITE_FAILED');
   });
 });
+
+describe('generateStoryboard 进度回调（Issue #33）', () => {
+  it('成功 → requesting → saving → done', async () => {
+    const phases: string[] = [];
+    const r = await generateStoryboard({ story: STORY }, makeDeps(), {}, (p) => phases.push(p.phase));
+    expect(r.ok).toBe(true);
+    expect(phases[0]).toBe('requesting');
+    expect(phases).toContain('saving');
+    expect(phases[phases.length - 1]).toBe('done');
+  });
+
+  it('失败 → 上报 error（状态正确回退）', async () => {
+    const phases: string[] = [];
+    const provider: LlmProvider = {
+      complete: vi.fn().mockRejectedValue(new ProviderCallError('AUTH_FAILED', 'x', false)),
+      probe: vi.fn(),
+    };
+    const deps = makeDeps({ createProvider: vi.fn().mockReturnValue(provider) });
+    const r = await generateStoryboard({ story: STORY }, deps, {}, (p) => phases.push(p.phase));
+    expect(r.ok).toBe(false);
+    expect(phases).toContain('requesting');
+    expect(phases[phases.length - 1]).toBe('error');
+    expect(phases).not.toContain('done');
+  });
+})

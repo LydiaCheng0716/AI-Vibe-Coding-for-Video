@@ -162,21 +162,53 @@ export async function generateStoryboardAttempt(
   return ok(project);
 }
 
+/** 生成进度阶段（Issue #33）。 */
+export type GenerationPhase = 'requesting' | 'saving' | 'done' | 'error';
+export interface GenerationProgress {
+  phase: GenerationPhase;
+  /** requesting 阶段的尝试序号（含重试）。 */
+  attempt?: number;
+  maxAttempts?: number;
+  message: string;
+}
+
 /**
  * 生成完整分镜并落库（TASK-009 接入）：全局锁(并发=1) → 退避重试(仅 LLM 部分) → 落库一次。
  * - 进行中再次调用 → GENERATION_IN_PROGRESS（防重复提交，分镜与 BGM 共享锁）。
  * - 重试只重发 LLM 调用，不重复写 storage。
+ * - onProgress（Issue #33）：上报请求/重试/保存/完成/失败阶段，避免长故事被误判为卡死；
+ *   与锁+重试兼容，失败时上报 error 阶段（状态正确回退）。单次调用返回所有镜头（非流式），
+ *   故进度按「尝试次数 + 阶段」呈现，而非逐镜头。
  */
 export async function generateStoryboard(
   input: { story: string; params?: Settings['params']; apiKey?: string },
   deps: GenerationDeps = realDeps,
   retryOpts: RetryOptions = {},
+  onProgress?: (p: GenerationProgress) => void,
 ): Promise<Result<Project>> {
+  const report = onProgress ?? (() => {});
   return withLlmLock(async () => {
-    const attempt = await withRetry(() => generateStoryboardAttempt(input, deps), retryOpts);
-    if (!attempt.ok) return attempt;
+    const attempt = await withRetry(() => generateStoryboardAttempt(input, deps), {
+      ...retryOpts,
+      onAttempt: (n, max) =>
+        report({
+          phase: 'requesting',
+          attempt: n,
+          maxAttempts: max,
+          message: n > 1 ? `生成失败，正在重试（第 ${n}/${max} 次）…` : '正在请求 AI 生成分镜…',
+        }),
+    });
+    if (!attempt.ok) {
+      report({ phase: 'error', message: attempt.error.message });
+      return attempt;
+    }
+    report({ phase: 'saving', message: '正在保存分镜…' });
     const saved = await deps.saveCurrentProject(attempt.data);
-    if (!saved.ok) return saved;
+    if (!saved.ok) {
+      report({ phase: 'error', message: saved.error.message });
+      return saved;
+    }
+    report({ phase: 'done', message: '分镜生成完成' });
     return ok(attempt.data);
   });
 }

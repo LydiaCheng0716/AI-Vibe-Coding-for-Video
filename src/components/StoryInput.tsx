@@ -97,10 +97,15 @@ export default function StoryInput({ onGenerated, busy }: Props) {
     }
     setNotice('正在生成分镜…');
     try {
-      const r = await generateStoryboard({
-        story: text,
-        ...(persistKey ? {} : { apiKey: tempKey }),
-      });
+      // Issue #33：上报进度阶段（请求/重试/保存），避免长故事被误判为卡死。
+      const r = await generateStoryboard(
+        { story: text, ...(persistKey ? {} : { apiKey: tempKey }) },
+        undefined,
+        undefined,
+        (p) => {
+          if (p.phase !== 'done') setNotice(p.message);
+        },
+      );
       if (r.ok) {
         setNotice(null);
         onGenerated(r.data);
