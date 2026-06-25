@@ -24,6 +24,7 @@ interface Props {
 export default function ShotCard({ shot, project, busy, persistApiKey, onShotChanged }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(shot.prompt);
+  const [draftEn, setDraftEn] = useState(shot.promptEn ?? ''); // 双语英文版编辑草稿（Issue #41）
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // 单镜头迭代（Issue #30）
@@ -38,31 +39,45 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
 
   async function onSave() {
     setSaving(true);
-    const r = await updateShotPrompt(shot.id, draft);
-    setSaving(false);
-    if (!r.ok) {
-      setNotice(r.error.message);
-      return;
+    // 双语：同时保存中文 prompt 与英文 promptEn，避免改了中文而英文残留旧版（Codex P2）。
+    if (shot.promptEn !== undefined) {
+      const updated: Shot = { ...shot, prompt: draft, promptEn: draftEn, editedByUser: true };
+      const r = await replaceShot(shot.id, updated);
+      setSaving(false);
+      if (!r.ok) {
+        setNotice(r.error.message);
+        return;
+      }
+      onShotChanged(updated);
+    } else {
+      const r = await updateShotPrompt(shot.id, draft);
+      setSaving(false);
+      if (!r.ok) {
+        setNotice(r.error.message);
+        return;
+      }
+      onShotChanged({ ...shot, prompt: draft, editedByUser: true });
     }
-    onShotChanged({ ...shot, prompt: draft, editedByUser: true });
     setEditing(false);
     setNotice(null);
   }
 
   function onCancel() {
     setDraft(shot.prompt);
+    setDraftEn(shot.promptEn ?? '');
     setEditing(false);
     setNotice(null);
   }
 
   function onEdit() {
     setDraft(shot.prompt);
+    setDraftEn(shot.promptEn ?? '');
     setNotice(null);
     setEditing(true);
   }
 
-  async function onCopy() {
-    const r = await copyToClipboard(shot.prompt);
+  async function onCopy(text: string) {
+    const r = await copyToClipboard(text);
     if (r.ok) {
       setNotice('已复制到剪贴板');
       window.setTimeout(() => setNotice((n) => (n === '已复制到剪贴板' ? null : n)), 2000);
@@ -152,9 +167,20 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
           {shot.editedByUser && <span className="ml-1 text-amber-600">（已编辑）</span>}
         </span>
         <div className="flex gap-2">
-          <button type="button" onClick={onCopy} className="text-xs text-blue-600 hover:underline">
-            复制
-          </button>
+          {shot.promptEn ? (
+            <>
+              <button type="button" onClick={() => onCopy(shot.prompt)} className="text-xs text-blue-600 hover:underline">
+                复制中文
+              </button>
+              <button type="button" onClick={() => onCopy(shot.promptEn ?? '')} className="text-xs text-blue-600 hover:underline">
+                复制英文
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => onCopy(shot.prompt)} className="text-xs text-blue-600 hover:underline">
+              复制
+            </button>
+          )}
           {!editing && (
             <button type="button" onClick={onEdit} className="text-xs text-blue-600 hover:underline">
               编辑
@@ -215,11 +241,24 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
 
       {editing ? (
         <div className="mt-2 flex flex-col gap-2">
+          {shot.promptEn !== undefined && (
+            <span className="text-[11px] font-medium text-gray-500">中文</span>
+          )}
           <textarea
             className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 text-xs outline-none focus:border-blue-500"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />
+          {shot.promptEn !== undefined && (
+            <>
+              <span className="text-[11px] font-medium text-gray-500">English</span>
+              <textarea
+                className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 text-xs outline-none focus:border-blue-500"
+                value={draftEn}
+                onChange={(e) => setDraftEn(e.target.value)}
+              />
+            </>
+          )}
           <div className="flex gap-2">
             <button
               type="button"
@@ -236,6 +275,21 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
             >
               取消
             </button>
+          </div>
+        </div>
+      ) : shot.promptEn ? (
+        <div className="mt-2 flex flex-col gap-2">
+          <div>
+            <span className="text-[11px] font-medium text-gray-500">中文</span>
+            <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs text-gray-800">
+              {shot.prompt}
+            </pre>
+          </div>
+          <div>
+            <span className="text-[11px] font-medium text-gray-500">English</span>
+            <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs text-gray-800">
+              {shot.promptEn}
+            </pre>
           </div>
         </div>
       ) : (

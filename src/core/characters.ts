@@ -12,6 +12,7 @@ import { composeAppearance } from './characterProfile';
 const HEADER: Record<OutputLanguage, string> = {
   zh: '角色一致性参考：',
   en: 'Character consistency reference:',
+  'zh-en': '角色一致性参考：', // 双语：锚点块沿用中文口径，注入到中文 prompt
 };
 
 /** 外观单行化，避免换行破坏注入块格式（kimi LOW-3）。 */

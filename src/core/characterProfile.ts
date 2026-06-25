@@ -42,6 +42,19 @@ export const CHARACTER_FIELD_LABELS: Record<OutputLanguage, Record<CharacterFiel
     accessories: 'Accessories',
     demeanor: 'Demeanor',
   },
+  // 中英双语（Issue #41）：角色字段标签沿用中文口径。
+  'zh-en': {
+    codename: '代号',
+    ageRange: '年龄段',
+    gender: '性别',
+    ethnicitySkin: '种族/肤色',
+    hair: '发型发色',
+    face: '脸部特征',
+    build: '体型',
+    clothing: '服装',
+    accessories: '配饰',
+    demeanor: '气质/表情基调',
+  },
 };
 
 /** 全空档案（手动新增角色用）。 */

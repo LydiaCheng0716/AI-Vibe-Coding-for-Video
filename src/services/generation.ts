@@ -300,6 +300,7 @@ export async function rewriteShotAttempt(
   if (!parsed) return err('BAD_RESPONSE_FORMAT', '重写结果格式异常，请重试。');
 
   // 空串 override 回退到模型解析值（`??` 会把 '' 当有效值 → shotSize:'' 等无效产出，Kimi P2）。
+  // 双语（Issue #41）：promptEn 取模型新值，模型省略则保留原 promptEn，保持中英一致。
   const merged: Shot = {
     ...shot,
     summary: parsed.summary,
@@ -307,6 +308,7 @@ export async function rewriteShotAttempt(
     cameraMovement: pickOverride(input.paramOverrides?.cameraMovement, parsed.cameraMovement),
     durationSuggestion: pickOverride(input.paramOverrides?.durationSuggestion, parsed.durationSuggestion),
     prompt: parsed.prompt,
+    ...(parsed.promptEn || shot.promptEn ? { promptEn: parsed.promptEn ?? shot.promptEn } : {}),
     editedByUser: false,
   };
   const byId = new Map(input.project.characters.map((c) => [c.id, c]));

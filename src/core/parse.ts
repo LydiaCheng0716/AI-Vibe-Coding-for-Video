@@ -219,6 +219,7 @@ export function parseStoryboard(raw: string, lang: OutputLanguage = 'zh'): Parse
     const characterRefs = Array.from(
       new Set(refsIn.map(resolveRef).filter((x): x is string => x !== null)),
     );
+    const promptEn = cleanStr(s.promptEn); // 双语英文版（Issue #41），缺失退化为单语
     shots.push({
       id: `s${i + 1}`,
       index: i + 1,
@@ -227,6 +228,7 @@ export function parseStoryboard(raw: string, lang: OutputLanguage = 'zh'): Parse
       cameraMovement: (s.cameraMovement as string).trim(),
       durationSuggestion: (s.durationSuggestion as string).trim(),
       prompt: (s.prompt as string).trim(),
+      ...(promptEn ? { promptEn } : {}),
       characterRefs,
       editedByUser: false,
     });
@@ -275,19 +277,24 @@ export function parseFieldSuggestions(raw: string): string[] | null {
  */
 export function parseShotRewrite(
   raw: string,
-): Pick<Shot, 'summary' | 'shotSize' | 'cameraMovement' | 'durationSuggestion' | 'prompt'> | null {
+): Pick<
+  Shot,
+  'summary' | 'shotSize' | 'cameraMovement' | 'durationSuggestion' | 'prompt' | 'promptEn'
+> | null {
   if (typeof raw !== 'string' || raw.trim() === '') return null;
   const obj = tryParseObject(raw);
   if (!isObj(obj)) return null;
   for (const f of SHOT_FIELDS) {
     if (!nonEmptyStr(obj[f])) return null;
   }
+  const promptEn = cleanStr(obj.promptEn); // 双语英文版（Issue #41），可选
   return {
     summary: (obj.summary as string).trim(),
     shotSize: (obj.shotSize as string).trim(),
     cameraMovement: (obj.cameraMovement as string).trim(),
     durationSuggestion: (obj.durationSuggestion as string).trim(),
     prompt: (obj.prompt as string).trim(),
+    ...(promptEn ? { promptEn } : {}),
   };
 }
 
