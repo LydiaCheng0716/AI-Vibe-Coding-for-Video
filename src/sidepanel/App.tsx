@@ -137,6 +137,7 @@ export default function App() {
                   busy={busy}
                   persistApiKey={persistApiKey}
                   onShotChanged={onShotChanged}
+                  onProjectUpdated={onProjectUpdated}
                 />
                 <BgmPanel project={project} busy={busy} onBgmGenerated={onBgmGenerated} />
                 <ExportPanel project={project} />

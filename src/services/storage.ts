@@ -206,6 +206,21 @@ export async function addCharacter(input: Omit<Character, 'id'>): Promise<Result
 }
 
 /**
+ * 整组替换镜头数组（Issue #56 增删/插入/拖拽排序/撤销）：projectLock 内整写 `project.shots`。
+ * 调用方已用 `core/shotOps` 排好 index（撤销时原样还原，不二次重排）。无项目 → ok(null)。
+ */
+export async function setShots(shots: Shot[]): Promise<Result<Project | null>> {
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return ok(null);
+    const next = { ...project, shots };
+    const saved = await doSaveProject(next);
+    if (!saved.ok) return saved;
+    return ok(next);
+  });
+}
+
+/**
  * 整条替换某镜头（Issue #30/#32 单镜头重写落库）：projectLock 内 RMW，按 id 替换，
  * **保留原 id/index**，其余镜头不变。无项目/无匹配 → ok 无副作用。
  */
