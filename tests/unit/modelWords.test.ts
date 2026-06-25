@@ -5,23 +5,29 @@ import { jimengKelingZh } from '../../src/prompts/templates/jimeng-keling-zh';
 import { defaultParams } from '../../src/core/defaults';
 import type { VideoModel } from '../../src/core/models';
 
-describe('modelWords', () => {
-  it('jimeng/keling → 中文负面词', () => {
-    expect(modelWords('jimeng').negative).toContain('五官扭曲');
-    expect(modelWords('jimeng').style).toContain('电影感');
-    expect(modelWords('keling').negative).toContain('运动拖影');
+describe('modelWords（语言跟随模板）', () => {
+  it('模型语言==模板语言 → 用专属词', () => {
+    expect(modelWords('jimeng', 'zh').negative).toContain('五官扭曲');
+    expect(modelWords('jimeng', 'zh').style).toContain('电影感');
+    expect(modelWords('keling', 'zh').negative).toContain('运动拖影');
+    expect(modelWords('sora', 'en').negative).toContain('deformed anatomy');
+    expect(modelWords('sora', 'en').style).toContain('photorealistic');
+    expect(modelWords('runway', 'en').negative).toContain('temporal flicker');
   });
-  it('sora/runway → 英文负面 + 风格词', () => {
-    expect(modelWords('sora').negative).toContain('deformed anatomy');
-    expect(modelWords('sora').style).toContain('photorealistic');
-    expect(modelWords('runway').negative).toContain('temporal flicker');
+  it('跨语言（模型语言≠模板语言）→ 回退该语言通用，不串语言（Codex P2）', () => {
+    // 中文模型放进英文模板 → 英文通用词，绝无中文
+    const zhInEn = modelWords('jimeng', 'en');
+    expect(zhInEn.negative).toContain('blurry');
+    expect(zhInEn.negative.join('')).not.toMatch(/[一-龥]/);
+    // 英文模型放进中文模板 → 中文通用词，绝无英文负面
+    const enInZh = modelWords('sora', 'zh');
+    expect(enInZh.negative).toContain('画面模糊');
+    expect(enInZh.negative).not.toContain('deformed anatomy');
   });
-  it('generic → 通用词表', () => {
-    expect(modelWords('generic').negative).toContain('blurry');
-    expect(modelWords('generic').style).toEqual([]);
-  });
-  it('未知模型 → 回退 generic', () => {
-    expect(modelWords('veo' as VideoModel)).toEqual(modelWords('generic'));
+  it('generic / 未知 → 该语言通用词表', () => {
+    expect(modelWords('generic', 'en').negative).toContain('blurry');
+    expect(modelWords('generic', 'zh').negative).toContain('画面模糊');
+    expect(modelWords('veo' as VideoModel, 'en')).toEqual(modelWords('generic', 'en'));
   });
 });
 

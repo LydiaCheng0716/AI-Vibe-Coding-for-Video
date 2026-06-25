@@ -8,8 +8,9 @@ export const jimengKelingZh: PromptTemplate = {
   id: 'jimeng-keling-zh',
   shotPromptInstruction(params: GenerationParams): string {
     const style = clampField(params.style);
-    // Issue #31：负面词/风格词按目标视频模型定制（集中于 modelWords），缺省回退通用。
-    const { negative, style: styleWords } = modelWords(params.videoModel);
+    // Issue #31：负面词/风格词按目标视频模型定制（集中于 modelWords）；本模板为中文 → 取中文词，
+    // 跨语言模型回退中文通用，杜绝英文词进中文提示词（Codex P2）。
+    const { negative, style: styleWords } = modelWords(params.videoModel, 'zh');
     const styleHint = styleWords.length > 0 ? `；建议风格词：${styleWords.join('、')}` : '';
     return [
       '镜头提示词模板：即梦/可灵中文（jimeng-keling-zh）。',

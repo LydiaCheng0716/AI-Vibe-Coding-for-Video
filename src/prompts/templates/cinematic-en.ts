@@ -8,8 +8,9 @@ export const cinematicEn: PromptTemplate = {
   id: 'cinematic-en',
   shotPromptInstruction(params: GenerationParams): string {
     const style = clampField(params.style);
-    // Issue #31：负面词/风格词按目标视频模型定制（集中于 modelWords），缺省回退通用。
-    const { negative, style: styleWords } = modelWords(params.videoModel);
+    // Issue #31：负面词/风格词按目标视频模型定制（集中于 modelWords）；本模板为英文 → 取英文词，
+    // 跨语言模型回退英文通用，杜绝中文词进英文提示词（Codex P2）。
+    const { negative, style: styleWords } = modelWords(params.videoModel, 'en');
     const styleHint = styleWords.length > 0 ? `；建议风格词：${styleWords.join(', ')}` : '';
     return [
       '镜头提示词模板：通用英文电影感（cinematic-en）。',
