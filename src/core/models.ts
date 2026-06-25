@@ -94,6 +94,9 @@ export interface Shot {
   promptEn?: string;
   /** 本镜 → 下一镜的转场建议（Issue #54）；末镜不展示。 */
   transitionToNext?: Transition;
+  /** 首帧图像提示词（Issue #57，按需生成，适配静态出图）；双语含 En。 */
+  firstFramePrompt?: string;
+  firstFramePromptEn?: string;
   characterRefs: string[];
   editedByUser: boolean;
 }

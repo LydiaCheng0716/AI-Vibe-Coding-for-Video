@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Project, Shot } from '../core/models';
-import { updateShotPrompt, replaceShot } from '../services/storage';
-import { rewriteShot } from '../services/generation';
+import { updateShotPrompt, replaceShot, updateShotFirstFrame } from '../services/storage';
+import { rewriteShot, generateFirstFrame } from '../services/generation';
 import type { RewriteMode } from '../prompts/rewrite';
 import { copyToClipboard } from '../services/clipboard';
 import { shotSizeOptions, cameraMovementOptions, DURATION_OPTIONS, withCurrent } from '../core/shotParams';
@@ -38,6 +38,9 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
   // 同步重入保护：快速连点时 state 快照会滞后，用 ref 在事件起点同步拦截（Kimi P2）。
   const rewritingRef = useRef(false);
   const undoingRef = useRef(false);
+  // 首帧图像提示词（Issue #57，按需生成）
+  const [firstFraming, setFirstFraming] = useState(false);
+  const firstFramingRef = useRef(false);
 
   async function onSave() {
     setSaving(true);
@@ -156,6 +159,44 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
       cameraMovement: field === 'cameraMovement' ? value : shot.cameraMovement,
       durationSuggestion: field === 'durationSuggestion' ? value : shot.durationSuggestion,
     });
+  }
+
+  // 首帧图像提示词：按需生成（注入锁定角色 + 全局风格），落库后回传更新后的镜头。
+  async function onGenerateFirstFrame() {
+    if (busy || firstFramingRef.current) return;
+    firstFramingRef.current = true;
+    setFirstFraming(true);
+    setNotice(null);
+    try {
+      const apiKey = persistApiKey ? undefined : tempKey.trim() || undefined;
+      const r = await generateFirstFrame({
+        shot,
+        characters: project.characters,
+        globalStyle: project.globalStyle,
+        lang: project.params.outputLanguage,
+        apiKey,
+      });
+      if (!r.ok) {
+        setNotice(r.error.message);
+        return;
+      }
+      const save = await updateShotFirstFrame(shot.id, r.data);
+      if (save.ok && save.data) {
+        const updated = save.data.shots.find((s) => s.id === shot.id);
+        if (updated) onShotChanged(updated);
+      } else if (!save.ok) {
+        setNotice(save.error.message);
+      }
+    } finally {
+      if (!persistApiKey) setTempKey('');
+      firstFramingRef.current = false;
+      setFirstFraming(false);
+    }
+  }
+
+  async function onCopyFirstFrame(text: string) {
+    const r = await copyToClipboard(text);
+    setNotice(r.ok ? '首帧提示词已复制' : r.error.message);
   }
 
   const disabled = busy || rewriting;
@@ -354,6 +395,47 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 首帧图像提示词（Issue #57）：按需生成（默认不生成，省额度），注入锁定角色 + 全局风格 */}
+      {!editing && (
+        <div className="mt-2 flex flex-col gap-1 border-t border-gray-100 pt-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-medium text-gray-500">首帧图像提示词</span>
+            <button
+              type="button"
+              onClick={onGenerateFirstFrame}
+              disabled={busy || firstFraming}
+              className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50 disabled:opacity-50"
+            >
+              {firstFraming ? '生成中…' : shot.firstFramePrompt ? '重新生成' : '生成首帧'}
+            </button>
+            {shot.firstFramePrompt && (
+              <button
+                type="button"
+                onClick={() => onCopyFirstFrame(shot.firstFramePrompt ?? '')}
+                className="text-[11px] text-blue-600 hover:underline"
+              >
+                复制中文
+              </button>
+            )}
+            {shot.firstFramePromptEn && (
+              <button
+                type="button"
+                onClick={() => onCopyFirstFrame(shot.firstFramePromptEn ?? '')}
+                className="text-[11px] text-blue-600 hover:underline"
+              >
+                复制英文
+              </button>
+            )}
+          </div>
+          {shot.firstFramePrompt && (
+            <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-[11px] text-gray-700">
+              {shot.firstFramePrompt}
+              {shot.firstFramePromptEn ? `\n\n[EN] ${shot.firstFramePromptEn}` : ''}
+            </pre>
+          )}
         </div>
       )}
 

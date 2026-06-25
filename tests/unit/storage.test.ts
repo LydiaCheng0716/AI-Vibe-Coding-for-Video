@@ -285,3 +285,18 @@ describe('storage: setShots（Issue #56）', () => {
     expect(p?.shots.map((s) => s.id)).toEqual(['s2', 's1']);
   });
 })
+
+describe('storage: updateShotFirstFrame（Issue #57）', () => {
+  it('设置 + 清除首帧提示词', async () => {
+    const { updateShotFirstFrame } = await import('../../src/services/storage');
+    await saveCurrentProject(mkProject());
+    let r = await updateShotFirstFrame('s1', { firstFramePrompt: '首帧图', firstFramePromptEn: 'frame' });
+    expect(r.ok).toBe(true);
+    let p = await getCurrentProject();
+    expect(p?.shots[0].firstFramePrompt).toBe('首帧图');
+    expect(p?.shots[0].firstFramePromptEn).toBe('frame');
+    r = await updateShotFirstFrame('s1', null);
+    p = await getCurrentProject();
+    expect(p?.shots[0].firstFramePrompt).toBeUndefined();
+  });
+})

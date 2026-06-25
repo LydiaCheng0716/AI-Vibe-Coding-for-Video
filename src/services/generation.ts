@@ -15,12 +15,13 @@ import { STORYBOARD_TIMEOUT_MS, BGM_TIMEOUT_MS, MAX_OUTPUT_TOKENS } from '../cor
 import { validateStory, validateProviderConfig } from '../core/validate';
 import { buildStoryboardPrompt } from '../prompts/storyboard';
 import { buildBgmPrompt } from '../prompts/bgm';
-import { parseStoryboard, parseBgmPrompt, buildProject, parseShotRewrite, parseTransition } from '../core/parse';
+import { parseStoryboard, parseBgmPrompt, buildProject, parseShotRewrite, parseTransition, parseFirstFrame } from '../core/parse';
 import { buildTransitionPrompt } from '../prompts/transition';
+import { buildFirstFramePrompt } from '../prompts/firstFrame';
 import { injectCharacterConsistency, injectCharactersIntoShot } from '../core/characters';
 import { injectGlobalStyle, injectStyleIntoShot } from '../core/style';
 import { buildShotRewritePrompt, pickOverride, type RewriteMode } from '../prompts/rewrite';
-import type { BgmPrompt, OutputLanguage, Shot, Transition } from '../core/models';
+import type { BgmPrompt, Character, GlobalStyle, OutputLanguage, Shot, Transition } from '../core/models';
 import { CHARACTER_SUGGEST_TIMEOUT_MS, CHARACTER_SUGGEST_MAX_TOKENS } from '../core/config';
 import { ProviderCallError, createProvider, type LlmProvider } from './llm/provider';
 import { hasHostPermission, originForProvider } from './permissions';
@@ -419,4 +420,66 @@ export async function generateTransition(
   retryOpts: RetryOptions = {},
 ): Promise<Result<Transition>> {
   return withLlmLock(() => withRetry(() => generateTransitionAttempt(input, deps), retryOpts));
+}
+
+// ---- 首帧图像提示词生成（Issue #57）----
+
+export interface FirstFrameInput {
+  shot: Shot;
+  characters: Character[];
+  globalStyle?: GlobalStyle;
+  /** 输出语言：传当前**项目**语言（#54 P2 教训）。 */
+  lang?: OutputLanguage;
+  apiKey?: string;
+}
+
+export interface FirstFrameResult {
+  firstFramePrompt: string;
+  firstFramePromptEn?: string;
+}
+
+/** 单次首帧生成尝试：前置校验 → prompt（注入角色+风格）→ provider → 解析，不锁不存。 */
+export async function generateFirstFrameAttempt(
+  input: FirstFrameInput,
+  deps: PreflightDeps = realDeps,
+): Promise<Result<FirstFrameResult>> {
+  const pre = await preflightProvider(deps, input.apiKey);
+  if (!pre.ok) return pre;
+  const { settings, apiKey } = pre.data;
+  const lang = input.lang ?? settings.params.outputLanguage;
+
+  const { system, user } = buildFirstFramePrompt(input.shot, input.characters, input.globalStyle, lang);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), STORYBOARD_TIMEOUT_MS);
+  let raw: string;
+  try {
+    raw = await deps.createProvider(settings.provider).complete({
+      system,
+      user,
+      model: settings.provider.model,
+      apiKey,
+      maxTokens: MAX_OUTPUT_TOKENS,
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    return providerErr(e);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const parsed = parseFirstFrame(raw);
+  if (!parsed) return err('BAD_RESPONSE_FORMAT', '首帧提示词生成结果异常，请重试。');
+  return ok({
+    firstFramePrompt: parsed.firstFrame,
+    ...(parsed.firstFrameEn ? { firstFramePromptEn: parsed.firstFrameEn } : {}),
+  });
+}
+
+/** 生成首帧图像提示词（与分镜/BGM 共享全局锁 + 退避重试）。UI 成功后调 storage.updateShotFirstFrame 落库。 */
+export async function generateFirstFrame(
+  input: FirstFrameInput,
+  deps: PreflightDeps = realDeps,
+  retryOpts: RetryOptions = {},
+): Promise<Result<FirstFrameResult>> {
+  return withLlmLock(() => withRetry(() => generateFirstFrameAttempt(input, deps), retryOpts));
 }

@@ -224,3 +224,17 @@ describe('exportProject: 转场（Issue #54）', () => {
     if (r.ok) expect(r.data).toContain('transitionToNext');
   });
 })
+
+describe('exportProject: 首帧图像提示词（Issue #57）', () => {
+  it('MD/纯文本含首帧段；CSV 含首帧列；JSON 含 firstFramePrompt', () => {
+    const p = mkProject({ shots: [mkShot(1, { firstFramePrompt: '广角海景图' }), mkShot(2), mkShot(3)] });
+    const md = exportProject(p, 'markdown');
+    if (md.ok) { expect(md.data).toContain('首帧图像提示词'); expect(md.data).toContain('广角海景图'); }
+    const txt = exportProject(p, 'plaintext');
+    if (txt.ok) expect(txt.data).toContain('广角海景图');
+    const csv = exportProject(p, 'csv');
+    if (csv.ok) { expect(csv.data.split('\r\n')[0]).toContain('首帧图像提示词'); expect(csv.data).toContain('广角海景图'); }
+    const json = exportProject(p, 'json');
+    if (json.ok) expect(json.data).toContain('firstFramePrompt');
+  });
+})

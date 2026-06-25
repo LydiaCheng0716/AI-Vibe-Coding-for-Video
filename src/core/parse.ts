@@ -352,6 +352,22 @@ export function parseTransition(raw: string): { note: string; noteEn?: string } 
   return text.length > 0 ? { note: text } : null;
 }
 
+/**
+ * 解析首帧图像提示词（Issue #57）：取 `{firstFrame, firstFrameEn?}`（JSON 优先），无则回退整段文本；
+ * 空 → null。
+ */
+export function parseFirstFrame(raw: string): { firstFrame: string; firstFrameEn?: string } | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const obj = tryParseObject(raw);
+  if (isObj(obj)) {
+    const firstFrame = cleanStr(obj.firstFrame);
+    const firstFrameEn = cleanStr(obj.firstFrameEn);
+    if (firstFrame) return { firstFrame, ...(firstFrameEn ? { firstFrameEn } : {}) };
+  }
+  const text = raw.trim();
+  return text.length > 0 ? { firstFrame: text } : null;
+}
+
 /** 把解析结果组装成完整 Project（供 generation.ts 落库）。 */
 export function buildProject(
   story: string,
