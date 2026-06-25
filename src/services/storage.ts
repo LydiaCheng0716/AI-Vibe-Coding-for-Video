@@ -11,6 +11,7 @@ import {
   type Character,
   type Shot,
   type GlobalStyle,
+  type Transition,
 } from '../core/models';
 import { defaultSettings } from '../core/defaults';
 import { reinjectCharacterConsistency } from '../core/characters';
@@ -202,6 +203,33 @@ export async function addCharacter(input: Omit<Character, 'id'>): Promise<Result
     });
     if (!saved.ok) return saved;
     return ok(character);
+  });
+}
+
+/**
+ * 设置/清除某镜「→下一镜」转场（Issue #54）：projectLock 内 RMW，transition=null 清除。
+ * 无项目/无匹配 → ok(null)。返回更新后 Project。
+ */
+export async function updateShotTransition(
+  shotId: string,
+  transition: Transition | null,
+): Promise<Result<Project | null>> {
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return ok(null);
+    let hit = false;
+    const shots = project.shots.map((s) => {
+      if (s.id !== shotId) return s;
+      hit = true;
+      if (transition) return { ...s, transitionToNext: transition };
+      const { transitionToNext: _drop, ...rest } = s;
+      return rest;
+    });
+    if (!hit) return ok(null);
+    const next = { ...project, shots };
+    const saved = await doSaveProject(next);
+    if (!saved.ok) return saved;
+    return ok(next);
   });
 }
 

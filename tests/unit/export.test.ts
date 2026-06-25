@@ -192,3 +192,35 @@ describe('exportProject: CSV 公式注入防护（Codex P2）', () => {
     }
   });
 })
+
+describe('exportProject: 转场（Issue #54）', () => {
+  it('Markdown/纯文本在镜头间含转场行', () => {
+    const p = mkProject({
+      shots: [
+        mkShot(1, { transitionToNext: { type: 'dissolve', note: '叠化承接' } }),
+        mkShot(2),
+        mkShot(3),
+      ],
+    });
+    const md = exportProject(p, 'markdown');
+    if (md.ok) {
+      expect(md.data).toContain('叠化');
+      expect(md.data).toContain('叠化承接');
+    }
+    const txt = exportProject(p, 'plaintext');
+    if (txt.ok) expect(txt.data).toContain('叠化承接');
+  });
+  it('CSV 含转场列', () => {
+    const p = mkProject({ shots: [mkShot(1, { transitionToNext: { type: 'cut', note: '硬切' } }), mkShot(2), mkShot(3)] });
+    const r = exportProject(p, 'csv');
+    if (r.ok) {
+      expect(r.data.split('\r\n')[0]).toContain('转场(至下一镜)');
+      expect(r.data).toContain('硬切');
+    }
+  });
+  it('JSON 含 transitionToNext', () => {
+    const p = mkProject({ shots: [mkShot(1, { transitionToNext: { type: 'whip', note: '甩' } }), mkShot(2), mkShot(3)] });
+    const r = exportProject(p, 'json');
+    if (r.ok) expect(r.data).toContain('transitionToNext');
+  });
+})

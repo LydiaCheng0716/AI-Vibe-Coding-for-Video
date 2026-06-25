@@ -75,6 +75,13 @@ export interface Character {
   seedPhrase?: string;
 }
 
+/** 相邻镜头转场（Issue #54）：type=类型 id；双语含 noteEn。 */
+export interface Transition {
+  type: string;
+  note: string;
+  noteEn?: string;
+}
+
 export interface Shot {
   id: string;
   index: number;
@@ -85,6 +92,8 @@ export interface Shot {
   prompt: string;
   /** 中英双语（Issue #41）：prompt=中文版，promptEn=英文版；单语时不存在。 */
   promptEn?: string;
+  /** 本镜 → 下一镜的转场建议（Issue #54）；末镜不展示。 */
+  transitionToNext?: Transition;
   characterRefs: string[];
   editedByUser: boolean;
 }

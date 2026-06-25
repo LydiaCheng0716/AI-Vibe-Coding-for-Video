@@ -2,8 +2,10 @@ import { useState } from 'react';
 import type { Project, Shot } from '../core/models';
 import ShotCard from './ShotCard';
 import { deleteShotById, insertShotAt, moveShot, makeBlankShot } from '../core/shotOps';
-import { setShots, replaceShot } from '../services/storage';
-import { rewriteShot } from '../services/generation';
+import { setShots, replaceShot, updateShotTransition } from '../services/storage';
+import { rewriteShot, generateTransition } from '../services/generation';
+import { TRANSITION_TYPES, transitionLabel } from '../core/transitions';
+import { copyToClipboard } from '../services/clipboard';
 
 interface Props {
   project: Project;
@@ -38,6 +40,128 @@ function InsertBar({ onInsert, disabled }: { onInsert: (desc: string) => void; d
       >
         ＋插入
       </button>
+    </div>
+  );
+}
+
+// 相邻两镜之间的转场（Issue #54）：选类型 → 生成说明；可编辑/复制/清除/重新生成。
+function TransitionBar({
+  prev,
+  next,
+  lang,
+  busy,
+  apiKey,
+  onUpdated,
+}: {
+  prev: Shot;
+  next: Shot;
+  lang: Project['params']['outputLanguage'];
+  busy: boolean;
+  apiKey?: string;
+  onUpdated: (p: Project) => void;
+}) {
+  const t = prev.transitionToNext;
+  const [type, setType] = useState(t?.type ?? TRANSITION_TYPES[0].id);
+  const [note, setNote] = useState(t?.note ?? '');
+  const [noteEn, setNoteEn] = useState(t?.noteEn ?? '');
+  const [gen, setGen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const bilingual = lang === 'zh-en';
+
+  async function onGenerate() {
+    if (busy || gen) return;
+    setGen(true);
+    setNotice(null);
+    const r = await generateTransition({ prevShot: prev, nextShot: next, type, lang, apiKey });
+    setGen(false);
+    if (!r.ok) {
+      setNotice(r.error.message);
+      return;
+    }
+    setNote(r.data.note);
+    setNoteEn(r.data.noteEn ?? '');
+    const save = await updateShotTransition(prev.id, r.data);
+    if (save.ok && save.data) onUpdated(save.data);
+    else if (!save.ok) setNotice(save.error.message);
+  }
+
+  async function onSaveNote() {
+    if (!t) return;
+    // 用当前选中的 type（用户可能改了下拉再编辑），而非旧 prop 的 t.type（Codex P2）。
+    const save = await updateShotTransition(prev.id, { type, note, ...(bilingual && noteEn ? { noteEn } : {}) });
+    if (save.ok && save.data) {
+      onUpdated(save.data);
+      setNotice('已保存');
+    } else if (!save.ok) setNotice(save.error.message);
+  }
+
+  async function onClear() {
+    const save = await updateShotTransition(prev.id, null);
+    if (save.ok && save.data) onUpdated(save.data);
+    setNote('');
+    setNoteEn('');
+  }
+
+  async function onCopy() {
+    const text = bilingual && noteEn ? `${note}\n${noteEn}` : note;
+    const r = await copyToClipboard(text);
+    setNotice(r.ok ? '已复制' : r.error.message);
+  }
+
+  return (
+    <div className="flex flex-col gap-1 rounded bg-gray-50 px-2 py-1">
+      <div className="flex items-center gap-1">
+        <span className="text-[11px] text-gray-400">转场 ↧</span>
+        <select
+          className="rounded border border-gray-300 p-0.5 text-[11px]"
+          value={type}
+          onChange={(e) => setType(e.target.value)}
+        >
+          {TRANSITION_TYPES.map((tt) => (
+            <option key={tt.id} value={tt.id}>
+              {transitionLabel(tt.id, lang)}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={onGenerate}
+          disabled={busy || gen}
+          className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-white disabled:opacity-50"
+        >
+          {gen ? '生成中…' : t ? '重新生成' : '生成转场'}
+        </button>
+        {t && (
+          <>
+            <button type="button" onClick={onCopy} className="text-[11px] text-blue-600 hover:underline">
+              复制
+            </button>
+            <button type="button" onClick={onClear} className="text-[11px] text-red-600 hover:underline">
+              清除
+            </button>
+          </>
+        )}
+      </div>
+      {t && (
+        <>
+          <input
+            className="w-full rounded border border-gray-300 p-1 text-[11px]"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onBlur={onSaveNote}
+          />
+          {bilingual && (
+            <input
+              className="w-full rounded border border-gray-300 p-1 text-[11px]"
+              value={noteEn}
+              placeholder="English transition note"
+              onChange={(e) => setNoteEn(e.target.value)}
+              onBlur={onSaveNote}
+            />
+          )}
+        </>
+      )}
+      {notice && <span className="text-[11px] text-gray-500">{notice}</span>}
     </div>
   );
 }
@@ -167,6 +291,16 @@ export default function ShotList({ project, busy, persistApiKey, onShotChanged, 
               onDelete={() => void onDelete(s.id)}
             />
           </div>
+          {i < ordered.length - 1 && (
+            <TransitionBar
+              prev={s}
+              next={ordered[i + 1]}
+              lang={project.params.outputLanguage}
+              busy={busy}
+              apiKey={persistApiKey ? undefined : tempKey.trim() || undefined}
+              onUpdated={onProjectUpdated}
+            />
+          )}
           <InsertBar onInsert={(d) => onInsert(i + 1, d)} disabled={disabled} />
         </div>
       ))}
