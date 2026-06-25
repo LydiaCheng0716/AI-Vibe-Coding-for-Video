@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import fireugLogo from '../assets/fireug-logo.svg';
 import StoryInput from '../components/StoryInput';
 import SettingsPanel from '../components/SettingsPanel';
 import ShotList from '../components/ShotList';
@@ -93,9 +94,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white text-gray-900">
       <header className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
-        <div>
-          <h1 className="text-base font-semibold">StoryPop</h1>
-          <p className="text-xs text-gray-500">把故事变成分镜与提示词</p>
+        <div className="flex items-center gap-2">
+          <img src={fireugLogo} alt="FireUG" className="h-7 w-7 shrink-0" />
+          <div>
+            <h1 className="text-base font-semibold">StoryPop</h1>
+            <p className="text-xs text-gray-500">把故事变成分镜与提示词</p>
+          </div>
         </div>
         <button
           type="button"
