@@ -58,7 +58,9 @@ export function buildShotRewritePrompt(
   const styleInstruction = bilingual
     ? [
         '本次为「中英双语」：prompt 用简体中文（即梦/可灵风格），promptEn 用英文（电影感风格），两版描述同一镜头并保持一致。',
+        '【prompt 字段 = 中文版】下述中文模板中提到的 shot.prompt 即指本 prompt 字段：',
         jimengKelingZh.shotPromptInstruction(ctx.params),
+        '【promptEn 字段 = 英文版】下述英文模板中提到的「shot.prompt 用 English」在此专指 promptEn 字段；prompt 仍用中文：',
         cinematicEn.shotPromptInstruction(ctx.params),
       ].join('\n')
     : resolveTemplate(ctx.params).template.shotPromptInstruction(ctx.params);

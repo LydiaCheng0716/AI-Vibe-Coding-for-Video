@@ -18,13 +18,17 @@ export interface PromptPair {
 const SHOT_FIELDS_SHELL =
   '"summary": "string", "shotSize": "string", "cameraMovement": "string", "durationSuggestion": "string"';
 
-/** ADR-6(1) 期望输出外壳。双语时 shot 增 promptEn。 */
+// 角色结构化外壳（Issue #29：profile / suggestions / seedPhrase 必须保留，否则丢结构化数据）。
+const CHARACTER_SHELL =
+  '{ "name": "string|null", "appearance": "string", "profile": { "codename": "string", "ageRange": "string", "gender": "string", "ethnicitySkin": "string", "hair": "string", "face": "string", "build": "string", "clothing": "string", "accessories": "string", "demeanor": "string" }, "suggestions": { "ageRange": ["string"], "hair": ["string"] }, "seedPhrase": "string" }';
+
+/** ADR-6(1) 期望输出外壳。双语时 shot 增 promptEn；角色结构化字段始终保留。 */
 function jsonShell(bilingual: boolean): string {
   const shotLine = bilingual
     ? `{ ${SHOT_FIELDS_SHELL}, "prompt": "中文版", "promptEn": "English version", "characterRefs": ["string"] }`
     : `{ ${SHOT_FIELDS_SHELL}, "prompt": "string", "characterRefs": ["string"] }`;
   return `{
-  "characters": [ { "name": "string|null", "appearance": "string" } ],
+  "characters": [ ${CHARACTER_SHELL} ],
   "shots": [
     ${shotLine}
   ]
@@ -42,12 +46,14 @@ function shotInstruction(params: GenerationParams): string {
     return resolveTemplate(params).template.shotPromptInstruction(params);
   }
   // 双语：prompt 用中文（即梦/可灵风格），promptEn 用英文（电影感风格），两版描述同一镜头。
+  // 注：下面两套模板各自硬编码语言/字段名，此处显式重映射「模板里说的 shot.prompt」到目标字段，
+  // 避免「英文模板要求 prompt 用英文」与「prompt 应为中文版」自相矛盾（Codex P2）。
   return [
     '本次为「中英双语」：每个镜头给两版提示词，描述同一画面、保持一致。',
-    '【prompt 字段（简体中文）】按以下中文模板组织：',
+    '【prompt 字段 = 简体中文版】按以下中文模板组织（模板中提到的「shot.prompt」即指本 prompt 字段）：',
     jimengKelingZh.shotPromptInstruction(params),
     '',
-    '【promptEn 字段（English）】按以下英文模板组织：',
+    '【promptEn 字段 = 英文版】按以下英文模板组织（模板中提到的「shot.prompt 必须用 English」在此专指 promptEn 字段；prompt 字段仍用中文）：',
     cinematicEn.shotPromptInstruction(params),
   ].join('\n');
 }

@@ -49,6 +49,15 @@ describe('buildStoryboardPrompt 双语', () => {
     const { system } = buildStoryboardPrompt('一个故事', defaultParams());
     expect(system).not.toContain('promptEn');
   });
+
+  it('JSON 外壳保留 #29 结构化角色字段（不回归）', () => {
+    for (const lang of ['zh', 'en', 'zh-en'] as const) {
+      const { system } = buildStoryboardPrompt('一个故事', { ...defaultParams(), outputLanguage: lang });
+      expect(system).toContain('profile');
+      expect(system).toContain('suggestions');
+      expect(system).toContain('seedPhrase');
+    }
+  });
 });
 
 describe('parseShotRewrite 双语', () => {
