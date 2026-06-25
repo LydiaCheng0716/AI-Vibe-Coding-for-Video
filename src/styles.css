@@ -2,10 +2,114 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ──────────────────────────────────────────────────────────────────────────
+   专业化基础层（主线之外 · 设计打磨）。只调视觉，不改布局/结构/组件类名：
+   字体与渲染、表单控件质感、焦点环、滚动条、层次与排版细节。
+   ────────────────────────────────────────────────────────────────────────── */
 :root {
-  color-scheme: light dark;
+  /* 统一浅色控件主题，避免操作系统深色把表单控件染成与白底面板冲突的样式。 */
+  color-scheme: light;
+  --sp-accent: #c0392b; /* FireUG Logo 品牌红（哑光砖红） */
 }
+
 body {
   margin: 0;
   min-width: 320px;
+  background-color: #ffffff;
+  color: #1c1c1c; /* 近黑（对齐 Logo 炭灰） */
+  font-family:
+    Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'kern';
+}
+
+@layer base {
+  /* 标题更紧凑、更有设计感的字距。 */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.011em;
+  }
+
+  /* 交互控件统一加平滑过渡与指针，提升「手感」。 */
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    transition:
+      color 0.15s ease,
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      opacity 0.15s ease;
+  }
+  button:not(:disabled),
+  label,
+  summary,
+  [role='button'] {
+    cursor: pointer;
+  }
+
+  /* 统一、克制的键盘焦点环（无障碍 + 专业感），不改变盒模型尺寸。 */
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--sp-accent);
+    outline-offset: 1px;
+  }
+
+  /* 占位符更柔和。 */
+  ::placeholder {
+    color: #94a3b8; /* slate-400 */
+    opacity: 1;
+  }
+
+  /* 下拉框自定义箭头（appearance:none + 内嵌 SVG），统一各平台观感。
+     仅加右内边距容纳箭头，不影响外部布局。 */
+  select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.45rem center;
+    background-size: 0.95rem;
+    padding-right: 1.65rem;
+  }
+
+  /* 代码/提示词块：等宽字体 + 舒适行距，更易读、更专业。 */
+  pre,
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  pre {
+    line-height: 1.55;
+  }
+
+  /* 顶部栏轻微投影，强化层次（不改其尺寸/位置）。 */
+  header {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  /* 纤细、低调的滚动条，贴合侧边栏窄空间。 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1; /* slate-300 */
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8; /* slate-400 */
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
