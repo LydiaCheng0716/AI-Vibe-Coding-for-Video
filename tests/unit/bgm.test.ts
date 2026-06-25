@@ -19,6 +19,7 @@ function settings(): Settings {
 function makeDeps(over: Partial<GenerationDeps> = {}): GenerationDeps {
   const provider: LlmProvider = {
     complete: vi.fn().mockResolvedValue('{"prompt":"温暖的钢琴与弦乐，中速，适合回忆场景"}'),
+    probe: vi.fn(),
   };
   return {
     getSettings: vi.fn().mockResolvedValue(settings()),

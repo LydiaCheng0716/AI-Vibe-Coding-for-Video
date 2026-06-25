@@ -95,6 +95,32 @@ describe('openaiCompatible: response_format 兼容回退（api-spec §4.2）', (
   });
 });
 
+describe('openaiCompatible: probe（连接探针，Issue #28）', () => {
+  it('2xx → resolve（不解析 body、不查截断）', async () => {
+    // 即便 body 是空/截断也算成功——探针只判通断。
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({}, { status: 200 }));
+    await expect(createOpenAiCompatibleProvider().probe(req)).resolves.toBeUndefined();
+  });
+  it('probe 不带 response_format（最大兼容）', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({}, { status: 200 }));
+    await createOpenAiCompatibleProvider().probe(req);
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.response_format).toBeUndefined();
+  });
+  it('403 → FORBIDDEN', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ e: 1 }, { status: 403 }));
+    await expect(createOpenAiCompatibleProvider().probe(req)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+  it('404 → MODEL_NOT_FOUND', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ e: 1 }, { status: 404 }));
+    await expect(createOpenAiCompatibleProvider().probe(req)).rejects.toMatchObject({ code: 'MODEL_NOT_FOUND' });
+  });
+  it('fetch 抛错 → ProviderCallError（网络）', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+    await expect(createOpenAiCompatibleProvider().probe(req)).rejects.toBeInstanceOf(ProviderCallError);
+  });
+});
+
 describe('openaiCompatible: 状态码 → ErrorCode（api-spec §5）', () => {
   it('401 → AUTH_FAILED 不重试', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ e: 1 }, { status: 401 }));

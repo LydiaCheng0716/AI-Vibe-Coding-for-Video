@@ -21,6 +21,12 @@ export interface CompleteRequest {
 export interface LlmProvider {
   /** 发起一次「要求结构化 JSON 输出」的补全；返回原始文本（内含 JSON），由 core/parse 解析。 */
   complete(req: CompleteRequest): Promise<string>;
+  /**
+   * 连接探针（Issue #28）：发一个极小请求，**仅判 HTTP 通断**，2xx → resolve，
+   * 非 2xx/网络异常 → 抛细化后的 ProviderCallError。不读 body、不查截断
+   * （max_tokens=1 必然截断，复用 complete 会把成功误报为格式错误）。
+   */
+  probe(req: CompleteRequest): Promise<void>;
 }
 
 /**
@@ -41,9 +47,16 @@ export class ProviderCallError extends Error {
   }
 }
 
-/** 把厂商 HTTP 状态码映射到 ErrorCode（api-spec §5）。供各适配器复用。 */
+/**
+ * 把厂商 HTTP 状态码映射到 ErrorCode（api-spec §5）。供各适配器复用。
+ * Issue #28：401/403/404/402 拆开（旧版 403 混在 AUTH_FAILED、404/402 混在 BAD_RESPONSE_FORMAT），
+ * 让「测试连接」能分类报告；retriable 语义与既有重试层一致（4xx 配置类一律不重试）。
+ */
 export function mapHttpStatus(status: number): { code: ErrorCode; retriable: boolean } {
-  if (status === 401 || status === 403) return { code: 'AUTH_FAILED', retriable: false };
+  if (status === 401) return { code: 'AUTH_FAILED', retriable: false }; // Key 无效
+  if (status === 403) return { code: 'FORBIDDEN', retriable: false }; // 无权限/被锁定
+  if (status === 404) return { code: 'MODEL_NOT_FOUND', retriable: false }; // 模型/端点不存在
+  if (status === 402) return { code: 'QUOTA_EXCEEDED', retriable: false }; // 额度/欠费
   if (status === 408) return { code: 'NETWORK_ERROR', retriable: true }; // Request Timeout（kimi MED）
   if (status === 429) return { code: 'RATE_LIMITED', retriable: true };
   if (status >= 500) return { code: 'NETWORK_ERROR', retriable: true };

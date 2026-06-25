@@ -58,6 +58,20 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
   }
 
   return {
+    async probe(req: CompleteRequest): Promise<void> {
+      // 极小请求只判通断：不带 response_format（最大兼容），不读 body、不查截断。
+      let res: Response;
+      try {
+        res = await post(req, false);
+      } catch (e) {
+        throw mapFetchError(e);
+      }
+      if (!res.ok) {
+        const { code, retriable } = mapHttpStatus(res.status);
+        const retryAfterMs = res.status === 429 ? parseRetryAfter(res) : undefined;
+        throw new ProviderCallError(code, providerMessage(code), retriable, retryAfterMs);
+      }
+    },
     async complete(req: CompleteRequest): Promise<string> {
       let res: Response;
       try {
@@ -119,7 +133,13 @@ function parseRetryAfter(res: Response): number | undefined {
 function providerMessage(code: string): string {
   switch (code) {
     case 'AUTH_FAILED':
-      return 'API Key 无效或无权限，请到设置里检查你的 BYOK 配置。';
+      return 'API Key 无效，请到设置里检查你的 BYOK 配置。';
+    case 'FORBIDDEN':
+      return '无权限或被锁定（403），请检查 Key 权限与账号状态。';
+    case 'MODEL_NOT_FOUND':
+      return '模型不存在或无访问权限（404），请检查模型名。';
+    case 'QUOTA_EXCEEDED':
+      return '额度不足或欠费，请检查账户余额。';
     case 'RATE_LIMITED':
       return '请求过于频繁，请稍后再试。';
     case 'NETWORK_ERROR':

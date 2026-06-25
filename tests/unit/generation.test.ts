@@ -26,7 +26,7 @@ function goodShots() {
 }
 
 function makeDeps(over: Partial<GenerationDeps> = {}): GenerationDeps {
-  const provider: LlmProvider = { complete: vi.fn().mockResolvedValue(goodShots()) };
+  const provider: LlmProvider = { complete: vi.fn().mockResolvedValue(goodShots()), probe: vi.fn() };
   return {
     getSettings: vi.fn().mockResolvedValue(settingsWith()),
     hasApiKey: vi.fn().mockResolvedValue(true),
@@ -90,7 +90,7 @@ describe('generateStoryboard: 前置校验链', () => {
   });
 
   it('校验失败时不发出站请求', async () => {
-    const provider: LlmProvider = { complete: vi.fn() };
+    const provider: LlmProvider = { complete: vi.fn(), probe: vi.fn() };
     const deps = makeDeps({
       hasApiKey: vi.fn().mockResolvedValue(false),
       createProvider: vi.fn().mockReturnValue(provider),
@@ -115,6 +115,7 @@ describe('generateStoryboard: 成功与出站失败', () => {
   it('401 → AUTH_FAILED（不重试）', async () => {
     const provider: LlmProvider = {
       complete: vi.fn().mockRejectedValue(new ProviderCallError('AUTH_FAILED', 'x', false)),
+      probe: vi.fn(),
     };
     const deps = makeDeps({ createProvider: vi.fn().mockReturnValue(provider) });
     const r = await generateStoryboard({ story: STORY }, deps);
@@ -133,7 +134,7 @@ describe('generateStoryboard: 成功与出站失败', () => {
   });
 
   it('返回无法解析 → BAD_RESPONSE_FORMAT', async () => {
-    const provider: LlmProvider = { complete: vi.fn().mockResolvedValue('抱歉我帮不了你') };
+    const provider: LlmProvider = { complete: vi.fn().mockResolvedValue('抱歉我帮不了你'), probe: vi.fn() };
     const deps = makeDeps({ createProvider: vi.fn().mockReturnValue(provider) });
     const r = await generateStoryboard({ story: STORY }, deps);
     if (!r.ok) expect(r.error.code).toBe('BAD_RESPONSE_FORMAT');
