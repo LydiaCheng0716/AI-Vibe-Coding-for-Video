@@ -18,6 +18,7 @@ import { buildBgmPrompt } from '../prompts/bgm';
 import { parseStoryboard, parseBgmPrompt, buildProject, parseShotRewrite, parseTransition, parseFirstFrame } from '../core/parse';
 import { buildTransitionPrompt } from '../prompts/transition';
 import { buildFirstFramePrompt } from '../prompts/firstFrame';
+import { buildTranslatePrompt } from '../prompts/translate';
 import { injectCharacterConsistency, injectCharactersIntoShot } from '../core/characters';
 import { injectGlobalStyle, injectStyleIntoShot } from '../core/style';
 import { buildShotRewritePrompt, pickOverride, type RewriteMode } from '../prompts/rewrite';
@@ -482,4 +483,55 @@ export async function generateFirstFrame(
   retryOpts: RetryOptions = {},
 ): Promise<Result<FirstFrameResult>> {
   return withLlmLock(() => withRetry(() => generateFirstFrameAttempt(input, deps), retryOpts));
+}
+
+// ---- 轻量翻译（Issue #53：双语自动同步）----
+
+export interface TranslateInput {
+  text: string;
+  targetLang: 'zh' | 'en';
+  apiKey?: string;
+}
+
+/** 单次翻译尝试：校验非空 → 前置校验 → prompt → provider（短超时）→ 译文（纯文本），不锁不存。 */
+export async function translateTextAttempt(
+  input: TranslateInput,
+  deps: PreflightDeps = realDeps,
+): Promise<Result<string>> {
+  if (!input.text.trim()) return err('NO_GENERATION_INPUT', '没有可翻译的内容。');
+  const pre = await preflightProvider(deps, input.apiKey);
+  if (!pre.ok) return pre;
+  const { settings, apiKey } = pre.data;
+
+  const { system, user } = buildTranslatePrompt(input.text, input.targetLang);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CHARACTER_SUGGEST_TIMEOUT_MS);
+  let raw: string;
+  try {
+    raw = await deps.createProvider(settings.provider).complete({
+      system,
+      user,
+      model: settings.provider.model,
+      apiKey,
+      maxTokens: MAX_OUTPUT_TOKENS,
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    return providerErr(e);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const out = raw.trim();
+  if (!out) return err('BAD_RESPONSE_FORMAT', '翻译结果异常，请重试。');
+  return ok(out);
+}
+
+/** 翻译文本（与生成/重写共享全局锁 + 退避重试）。失败由 UI 保留用户输入、提示重试。 */
+export async function translateText(
+  input: TranslateInput,
+  deps: PreflightDeps = realDeps,
+  retryOpts: RetryOptions = {},
+): Promise<Result<string>> {
+  return withLlmLock(() => withRetry(() => translateTextAttempt(input, deps), retryOpts));
 }
