@@ -5,8 +5,9 @@ import ShotList from '../components/ShotList';
 import ExportPanel from '../components/ExportPanel';
 import BgmPanel from '../components/BgmPanel';
 import CharacterPanel from '../components/CharacterPanel';
+import DraftsPanel from '../components/DraftsPanel';
 import type { Project, BgmPrompt, Character, Shot } from '../core/models';
-import { getCurrentProject, getSettings } from '../services/storage';
+import { getCurrentProject, getSettings, saveCurrentProject } from '../services/storage';
 import { subscribeLlmBusy } from '../services/llmLock';
 
 export default function App() {
@@ -71,6 +72,15 @@ export default function App() {
     setProject((prev) => (prev ? { ...prev, characters: [...prev.characters, character] } : prev));
   }
 
+  // 打开历史草稿（Issue #35）：先置为 currentProject 成功，再切 UI——否则后续单镜头/角色编辑会
+  // 作用在旧 currentProject 上而 UI 显示新草稿（Codex P2）。落盘失败则不切，返回 false 让 UI 报错。
+  async function onOpenDraft(p: Project): Promise<boolean> {
+    const r = await saveCurrentProject(p);
+    if (!r.ok) return false;
+    setProject(p);
+    return true;
+  }
+
   return (
     <div className="min-h-screen bg-white text-gray-900">
       <header className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
@@ -93,6 +103,7 @@ export default function App() {
         ) : (
           <>
             <StoryInput onGenerated={setProject} busy={busy} />
+            <DraftsPanel project={project} onOpen={onOpenDraft} />
             {project && (
               <>
                 <CharacterPanel
