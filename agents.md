@@ -1,345 +1,127 @@
-# Agent 分工与工作流说明
+# 开发工作流说明
 
-本文档说明 AI 软件工厂中每个 Agent 的角色定位、职责边界，以及它们之间的协作流程。
+本文件说明本仓库**当前真实**的开发工作流：**Human PO 把关关键决策，中途的设计 / 实现 / 自检 / 评审由 AFK 自主工作流（Claude 驱动）+ 独立外部评审门（Kimi / Codex）完成。**
+
+> 本项目由 **FireUG / SSW TV** 开发制作。
 
 > **任务的唯一事实源是 GitHub Issues。**
-> 任务不再以 `docs/tasks/TASK-XXX.md` 文件维护（该目录已废弃删除）。每个任务的描述、验收标准、依赖、状态、分支约定全部以仓库的 GitHub Issue 为准。PM Agent 负责创建/维护 Issue，Developer / QA Agent 直接读取对应 Issue 作为任务规格。`docs/` 下只保留 PRD、架构、API、数据库等**设计文档**。
+> 每个任务的描述、验收标准、依赖、状态、分支约定全部以仓库 GitHub Issue 为准。`docs/` 下保留设计文档：PRD / 架构 / API / 数据库，以及 `docs/specs/` 里**每条任务的设计文档**（AFK 工作流每条任务产出）。
 
 ---
 
-## 角色总览
+## 角色总览（现行）
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Human PO                                  │
-│              提需求 · 批准架构 · 批准合并 · 最终决策             │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │  上下传递
-          ┌────────────────▼────────────────┐
-          │        PO Assistant Agent        │
-          │   翻译技术内容 · 汇总报告 · 建议  │
-          └────────────────┬────────────────┘
-                           │
-    ┌──────────────────────▼──────────────────────┐
-    │              需求阶段                         │
-    │           PM Agent                           │
-    │   PRD · 用户故事 · 验收标准 · 任务拆解        │
-    └──────────────────────┬──────────────────────┘
-                           │
-    ┌──────────────────────▼──────────────────────┐
-    │              架构阶段                         │
-    │    Architect Agent  ◄──►  架构 Review Agent  │
-    │  架构设计 API 数据库   评审风险 提出替代方案   │
-    └──────────────────────┬──────────────────────┘
-                           │  Human PO 批准架构
-    ┌──────────────────────▼──────────────────────┐
-    │              开发阶段（每任务并行）             │
-    │           Developer Agent                    │
-    │         实现代码 · 单元测试 · PR              │
-    └──────────────────────┬──────────────────────┘
-                           │
-    ┌──────────────────────▼──────────────────────┐
-    │              审查阶段                         │
-    │   Code Review Agent  +  QA Agent             │
-    │   代码审查·安全·性能     功能测试·E2E·回归    │
-    └──────────────────────┬──────────────────────┘
-                           │  Human PO 批准合并
-                           ▼
-                    develop → main
+┌──────────────────────────────────────────────────────────────┐
+│                          Human PO                             │
+│        提需求 · 批准架构 · 批准合并 · 最终决策 · 部署          │
+└───────────────────────────┬──────────────────────────────────┘
+                            │  交付「已审定的 Issue 队列 / scope / 顺序」
+                            ▼
+┌──────────────────────────────────────────────────────────────┐
+│          AFK 自主工作流（Claude 驱动，每条 Issue 瀑布）        │
+│  设计文档 → TDD(RED→GREEN) → 对抗自检 → lint·test·build 全绿   │
+│                       → CTO 自评(cto-pr-review)               │
+└───────────────────────────┬──────────────────────────────────┘
+                            │
+                            ▼
+┌──────────────────────────────────────────────────────────────┐
+│        独立外部评审门（gate ≠ implementer）：Kimi → Codex      │
+└───────────────────────────┬──────────────────────────────────┘
+                            │  merge-when-green
+                            ▼
+                  develop ──（累积稳定后，Human PO 批准）──→ main
+                            │
+                            ▼
+                 部署 / 发布：Human PO（合并 ≠ 部署）
 ```
 
 ---
 
-## 各 Agent 详细说明
-
-### 1. Human PO（产品负责人）
+## 1. Human PO（产品负责人，唯一真人决策者）
 
 | 项目 | 内容 |
 |------|------|
 | 身份 | 唯一的真人决策者 |
-| 输入 | 业务想法和需求 |
-| 输出 | 批准/拒绝决策 |
-| 关键决策点 | 批准 PRD · 批准架构 · 批准合并 |
-| 不做的事 | 写代码 · 选技术方案 · 直接操作系统 |
+| 关键决策点 | **提需求 / 定 scope（哪些 Issue、顺序、批次）· 批准架构方向 · 批准合并 · 最终决策** |
+| 部署 | 由 PO 负责（**合并 ≠ 部署**：工作流只 merge-when-green，绝不部署） |
+| 不做的事 | 写代码 · 跑中途流程（设计/实现/自检/评审都交给 AFK 工作流） |
 
-PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接与 Architect 或 Developer 对话。
-
----
-
-### 2. PO Assistant Agent
-
-| 项目 | 内容 |
-|------|------|
-| 提示词文件 | `.agents/po-assistant.md` |
-| 核心能力 | 技术↔业务语言互译 |
-| 输入 | 其他 Agent 的技术报告 |
-| 输出 | 通俗语言汇报 · Sprint 总结 · 决策建议 |
-| 不做的事 | 做决策 · 写代码 · 批准 PR |
-
-**示例翻译：**
-> Architect 说：「建议引入 Redis」  
-> PO Assistant 说：「Redis 可以减少用户等待时间，但会增加一个额外组件，维护成本略有上升。」
+PO 把一份**已审定的任务队列**（GitHub Issue 列表 + 顺序 + 合并策略 + 约束）交给 AFK 工作流，工作流自主执行到「可合并」状态，PO 在合并点和方向上把关。
 
 ---
 
-### 3. PM Agent
+## 2. AFK 自主工作流（Claude 驱动）
 
-| 项目 | 内容 |
-|------|------|
-| 提示词文件 | `.agents/pm.md` |
-| 核心能力 | 需求结构化 |
-| 输入 | Human PO 的业务描述 |
-| 输出 | `docs/PRD.md` · 每个任务一个 **GitHub Issue**（含验收标准/依赖/分支） |
-| 不做的事 | 选技术栈 · 写代码 · 做架构决策 |
+对 PO 交付的**每个 Issue**，按瀑布**一条一条**自主完成（`skill/afk/SKILL.md` 为权威规范）：
 
-**工作原则：** 每个用户故事必须有 Given/When/Then 格式的验收标准，开发才能开始。任务以 GitHub Issue 形式落地，Issue 是任务的唯一事实源。
+1. **设计文档** `docs/specs/YYYY-MM-DD-issueNN-*.md`（设计先行，最重要的一步）
+2. **TDD**：先写失败测试（RED）→ 实现（GREEN）
+3. **对抗性自检**：边界 / 竞态 / 隐私 / 回归
+4. **全量门禁**：`npm run lint && npm run test && npm run build` 必须全绿
+5. **CTO 自评**：`cto-pr-review` skill，逐条修复
+6. 提交 → push early → 开 PR → 看 CI（红就修）
+7. 交**外部评审门** → 修订 → **merge-when-green** 合并进 `develop`
 
----
-
-### 4. Architect Agent
-
-| 项目 | 内容 |
-|------|------|
-| 提示词文件 | `.agents/architect.md` |
-| 核心能力 | 系统设计 |
-| 输入 | `docs/PRD.md` |
-| 输出 | `docs/architecture.md` · `docs/api-spec.md` · `docs/db-design.md` |
-| 不做的事 | 写业务代码 · 自我审查 · 直接开始开发 |
-
-**工作原则：** API 优先——先定义契约，再实现。架构设计完成后必须经过独立 Review，才能移交开发。
+- **续航**：约 30 分钟的 cron relay 自我接续，扛住暂停 / 限流 / 上下文重置；连续 2 个「空 tick」（无实质进展）自动停机并出报告。
+- **复用 Skills**：`afk` · `cto-pr-review` · `kimi-review` · `codex-review` · `spec-planner` · `implementation-pilot` · `ui-ux-pro-max`。
+- **不做的事**：合并未过门的分支、合并红 CI、部署。
 
 ---
 
-### 5. 架构 Review Agent
+## 3. 外部评审门（gate ≠ implementer）
 
-| 项目 | 内容 |
-|------|------|
-| 提示词文件 | `.agents/architecture-reviewer.md` |
-| 核心能力 | 架构风险识别 |
-| 输入 | Architect Agent 的所有设计文档 |
-| 输出 | 架构审查报告（含严重程度分级） |
-| 不做的事 | 重新设计系统 · 写代码 · 做最终决定 |
-
-**审查维度：** 可扩展性 · 安全性 · 性能 · 架构合规性  
-**问题分级：** 严重（开发前必须修复）· 高 · 中 · 低
+- **始终由不同于实现者的模型评审**（绝不让模型审自己写的代码）：
+  - 默认 `/afk`（Claude 实现）→ **Kimi 优先**，自跳过则回退 **Codex**。
+  - `/afk codex`（Codex 实现）→ Kimi 优先，Kimi 不可用且 Claude 有额度则 Claude，**绝不 Codex**。
+- 评审**只读**；驱动方（Claude）分诊每条结论、修复确认项、批量后再跑**一次**门。
+- 门的范围是**结构性**问题（架构 / 正确性 / 安全 / 漏掉的边界）；文档 / 小问题统一留到最后一遍。
+- **看门狗**：每次外部门都有硬超时（约 300s），挂起即 kill 并按回退顺序换门或记录跳过，**绝不卡住队列**。
 
 ---
 
-### 6. Developer Agent
-
-| 项目 | 内容 |
-|------|------|
-| 提示词文件 | `.agents/developer.md` |
-| 核心能力 | 功能实现 |
-| 输入 | 对应 **GitHub Issue**（任务规格） + 架构文档 |
-| 输出 | feature 分支 + Pull Request + 单元测试 |
-| 不做的事 | 改架构 · 改 API 契约 · 合并自己的 PR |
-
-**Git 规则：** 每个任务一个独立分支（`feature/task-XXX-标题`），在独立 git worktree 中工作，不直接提交到 `develop` 或 `main`。
-
----
-
-### 7. Code Review Agent
-
-| 项目 | 内容 |
-|------|------|
-| 提示词文件 | `.agents/reviewer.md` |
-| 核心能力 | 代码质量把关 |
-| 输入 | Developer Agent 提交的 PR |
-| 输出 | 代码审查报告（含阻塞/非阻塞问题） |
-| 不做的事 | 自己实现修复 · 合并 PR · 审查架构决策 |
-
-**审查维度：** 正确性 · 安全性 · 性能 · 架构合规性 · 代码质量
-
----
-
-### 8. QA Agent
-
-| 项目 | 内容 |
-|------|------|
-| 提示词文件 | `.agents/qa.md` |
-| 核心能力 | 功能验证 |
-| 输入 | 任务验收标准 + 运行中的系统 |
-| 输出 | 测试报告 + Bug 列表 |
-| 不做的事 | 修复 Bug · 审查代码 · 合并 PR |
-
-**测试类型：** 功能测试 · 边缘情况测试 · 回归测试 · E2E 测试
-
----
-
-### 9. Deploy Agent
-
-| 项目 | 内容 |
-|------|------|
-| 提示词文件 | `.agents/deploy.md` |
-| 职责 | CI/CD 配置 · GitHub Actions · 产物打包（StoryPop 为 Chrome 扩展 `.zip`，无云端服务部署）|
-| 输出 | CI 配置 · 部署/发布报告 · Release Notes |
-| 不做的事 | 写业务功能 · 做需求决策 |
-
-> 注：本产品是纯客户端 Chrome 扩展，**没有 Docker / 云端服务器部署**；Deploy Agent 的"部署"= CI 跑 lint+单测、打包可加载的扩展产物，以及（未来）Chrome Web Store 发布。
-
----
-
-## 完整工作流步骤
-
-### 阶段一：需求阶段
-
-```
-步骤 1  Human PO
-        └── 用一段话描述产品：目标用户、核心功能、商业模式
-
-步骤 2  PM Agent
-        ├── 读取 PO 需求
-        ├── 输出 Epic 列表
-        ├── 拆解用户故事（含验收标准）
-        ├── 为每个任务创建 GitHub Issue（任务的唯一事实源）
-        └── 提交 PRD 草稿 → PO 确认
-```
-
-### 阶段二：架构阶段
-
-```
-步骤 3  Architect Agent
-        ├── 读取 PRD.md
-        ├── 输出 architecture.md（技术栈 + 系统设计）
-        ├── 输出 api-spec.md（所有端点）
-        └── 输出 db-design.md（数据表 + 迁移策略）
-
-步骤 4  架构 Review Agent
-        ├── 独立审查上述三份文档
-        ├── 输出分级问题列表
-        └── 提交审查报告
-
-步骤 5  PO Assistant Agent
-        ├── 将架构审查报告翻译成业务语言
-        └── 向 PO 呈现选项和建议
-
-步骤 6  Human PO
-        └── 批准架构 / 要求修改 / 拒绝重做
-```
-
-### 阶段三：开发阶段（每任务独立循环）
-
-```
-步骤 7  Developer Agent（每个 TASK 独立 worktree）
-        ├── 阅读对应 GitHub Issue + 架构文档
-        ├── 创建 feature/task-XXX 分支
-        ├── 实现功能 + 编写单元测试
-        └── 提交 PR → develop
-
-步骤 8  Code Review Agent
-        ├── 审查 PR（正确性 · 安全 · 性能 · 合规）
-        ├── 输出审查报告
-        └── 批准 / 要求修改
-
-步骤 9  QA Agent
-        ├── 执行功能测试 · 边缘测试 · 回归测试 · E2E
-        ├── 输出测试报告
-        └── Bug 上报 → Developer Agent 修复
-
-步骤 10 PO Assistant Agent
-        ├── 汇总审查报告 + 测试报告
-        └── 输出 Sprint 总结（✅ ⚠️ 💰 ⏱ 🎯）
-
-步骤 11 Human PO
-        └── 批准合并 → develop → （累积后）→ main
-```
-
----
-
-## 关键边界规则
+## 4. 关键边界规则
 
 | 规则 | 说明 |
 |------|------|
-| 架构不经审查不开发 | Architect 完成后必须经过架构 Review Agent，再由 PO 批准 |
-| PR 不自我合并 | Developer 不能合并自己的 PR |
-| 每任务独立分支 | 每个 TASK 在独立 git worktree 中实现，避免相互干扰 |
-| 人工审阅后合并 | 所有合并到 develop/main 的操作需 Human PO 确认 |
-| PO 只看业务语言 | 所有技术报告经 PO Assistant 翻译后才呈现给 PO |
-| 决策权不下放 | Agent 只执行和建议，最终决策始终由 Human PO 做出 |
+| 架构先批准 | 架构方向经 **Human PO** 批准后再进开发 |
+| gate ≠ implementer | 外部评审门的模型必不同于实现模型 |
+| 不合红 CI / 不合带 blocker | 绝不合并红 CI 或未解决的阻断问题 |
+| merge-when-green | CI 绿 + CTO 自评 + 外部门通过 → 合并进 `develop` |
+| 合并 ≠ 部署 | 工作流只合并；**部署 / 发布由 Human PO** |
+| 决策不下放 | 最终决策始终由 Human PO 做出 |
+| 任务事实源 | GitHub Issues |
 
 ---
 
-## Git Worktree 布局与合并流程
+## 5. 分支与合并
 
-**分支模型：每个任务一条分支**（不是每个角色一条长期分支）。开发以 **GitHub Issue（`[TASK-XXX]`）** 为单位，一个任务一条 `feature/task-XXX-*` 分支、一个独立 worktree、一个 PR；多个任务可并行、互不干扰，人工审阅后合并回 `develop`。
-
-### 分支与目录布局
-
-```
-AI-Vibe-Coding-for-Video/              ← 主仓库（main 仅生产发布；develop 集成分支）
-│
-AI-Vibe-Coding-for-Video-worktrees/    ← 同级目录，存放各任务 worktree
-├── task-001/   → 分支 feature/task-001-sidebar-story-input
-├── task-003/   → 分支 feature/task-003-storyboard-generation
-└── task-00x/   → 分支 feature/task-00x-...
-```
+**分支模型：每条任务一条分支。** 一个 Issue → 一条 `feature/issue-NN-*` 分支 → 一个 PR；从 `develop` 拉、合回 `develop`；多任务可串行/并行，互不干扰。
 
 | 分支 | 用途 |
 |------|------|
-| `main` | 仅生产发布 |
-| `develop` | 集成分支（所有任务分支从此拉出、合回此处）|
-| `feature/task-XXX-标题` | 单个任务的开发分支，对应一个 Issue 和一个 PR |
+| `main` | 仅生产发布（累积稳定后由 Human PO 合入） |
+| `develop` | 集成分支（所有任务分支从此拉出、merge-when-green 合回） |
+| `feature/issue-NN-标题` | 单个任务的开发分支，对应一个 Issue 和一个 PR |
+| `docs/*` · `design/*` | 文档 / 设计类短期分支，同样经 PR + PO 批准合并 |
 
-> PM / Architect / 架构 Review 等产出**文档**的角色，同样从 `develop` 拉短期分支提交（如 `docs/pm-...`、`agent/architect`），经审阅后合回；不再为每个角色保留长期分支。
-
-### 初始化某个任务的 worktree
-
-```bash
-# 在主仓库内执行（以 TASK-003 为例）
-WT=../AI-Vibe-Coding-for-Video-worktrees
-git fetch origin && git worktree add -b feature/task-003-storyboard-generation \
-  "$WT/task-003" develop
-git worktree list
-```
-
-### 日常工作流程
-
-```bash
-# 1. 进入该任务工作区（在 VS Code 中打开该目录）
-cd ../AI-Vibe-Coding-for-Video-worktrees/task-003
-
-# 2. 开发并提交（提交信息带上 Issue 号，便于关联）
-git add [具体文件]
-git commit -m "feat(task-003): 实现分镜生成与解析 (#5)"
-
-# 3. 推送并开 PR → develop（由 Code Review + QA 通过、Human PO 批准后合并）
-git push -u origin feature/task-003-storyboard-generation
-```
-
-### 同步最新 develop 到任务 worktree
-
-```bash
-cd ../AI-Vibe-Coding-for-Video-worktrees/task-003
-git merge develop          # 或 git rebase develop
-```
-
-### 清理 worktree（任务合并后）
-
-```bash
-git worktree remove ../AI-Vibe-Coding-for-Video-worktrees/task-003
-git branch -d feature/task-003-storyboard-generation
-```
-
-> **核心约束：** 合并到 `develop` / `main` 必须经 Human PO 人工审阅确认；任务分支之间不直接互相合并，统一通过 `develop` 集成。
+> 早期采用「每任务一个 git worktree」并行的做法仍然适用（可选）；现行 AFK 多为串行推进，单仓库内逐条 issue 分支即可。**核心约束：合并到 `develop` / `main` 需经 Human PO 把关；任务分支之间不直接互合，统一经 `develop` 集成。**
 
 ---
 
-## VS Code 多终端配置
+## 6. 历史「多 Agent 工厂」模式（保留备查）
 
-```
-Terminal 1  PM Agent          →  加载 .agents/pm.md
-Terminal 2  Architect         →  加载 .agents/architect.md
-Terminal 3  架构 Review        →  加载 .agents/architecture-reviewer.md
-Terminal 4  Developer（任务A） →  加载 .agents/developer.md
-Terminal 5  Developer（任务B） →  加载 .agents/developer.md（独立 worktree）
-Terminal 6  Code Review       →  加载 .agents/reviewer.md
-Terminal 7  QA                →  加载 .agents/qa.md
-Terminal 8  PO Assistant      →  加载 .agents/po-assistant.md
-```
+本仓库早期设计了 7 个独立终端 Agent（PM / Architect / 架构 Review / Developer / Code Review / QA / Deploy，提示词见 [`.agents/`](.agents/)）。这些角色职责现已**收敛进 AFK 工作流的各阶段 + 外部门**：
 
-每个 Terminal 在启动时将对应的 `.md` 文件作为上下文加载，即可让该 Terminal 扮演对应角色。
+| 历史角色 | 现行归属 |
+|----------|----------|
+| PM / Architect | AFK 的「设计文档」阶段（`docs/specs/*` + 顶层 PRD/架构/API/DB 文档） |
+| Developer | AFK 的「TDD + 实现」阶段 |
+| Code Review / QA | AFK 的「CTO 自评」+「外部评审门」+ CI（lint/test/build） |
+| Deploy | CI（GitHub Actions：lint + 单测 + 打包），**发布由 Human PO** |
+
+`.agents/*.md` 作为各角色提示词参考保留，需要时可独立启用；日常开发以本文件描述的 **AFK 工作流 + Human PO 把关** 为准。
 
 ---
 
-> 快速索引：[README.md](README.md) · [PRD](docs/PRD.md) · [架构](docs/architecture.md) · [API 规范](docs/api-spec.md) · [数据库设计](docs/db-design.md)
+> 快速索引：[README.md](README.md) · [PRD](docs/PRD.md) · [架构](docs/architecture.md) · [API 规范](docs/api-spec.md) · [数据库设计](docs/db-design.md) · [AFK 工作流规范](skill/afk/SKILL.md)

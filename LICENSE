@@ -1,0 +1,55 @@
+StoryPop — Proprietary License
+版权所有 © 2026 FireUG (SSW TV). 保留所有权利 / All Rights Reserved.
+
+主要作者 / Principal Authors（FireUG）：Lydia、Alvin 304、Thom。
+
+本软件 StoryPop（含本仓库的源代码、设计文档、品牌名称与标识：FireUG、SSW TV、
+StoryPop 及其 Logo，下称「本软件」）由 FireUG (SSW TV) 开发制作，是 FireUG (SSW TV)
+的专有财产，受著作权法及相关法律保护。
+
+一、许可范围
+  在未获得 FireUG (SSW TV) 事先书面许可的情况下，任何单位或个人不得对本软件进行：
+  复制、修改、合并、出版发行、再许可、出售、公开发布，或用于任何商业用途；
+  亦不得移除或更改本软件中的版权声明与品牌标识。
+
+二、第三方服务（BYOK）
+  本软件为纯客户端 Chrome 扩展，采用 BYOK（自带 API Key）方式直接调用使用者自行
+  选择的第三方大模型（LLM）服务。由此产生的调用费用、数据传输、内容处理与隐私合规，
+  均由使用者及其所选第三方服务商负责，与 FireUG (SSW TV) 无关。
+
+三、免责声明
+  本软件按「现状（AS IS）」提供，不附带任何明示或默示的担保，包括但不限于适销性、
+  特定用途适用性及不侵权的担保。在适用法律允许的最大范围内，FireUG (SSW TV) 不对
+  因使用或无法使用本软件而产生的任何直接、间接、附带或后果性损失承担责任。
+
+四、授权与联系
+  如需获得使用、分发或合作授权，请通过官方渠道 https://fireusergroup.com/ 联系
+  FireUG (SSW TV)。
+
+---
+
+StoryPop — Proprietary License
+Copyright © 2026 FireUG (SSW TV). All Rights Reserved.
+
+Principal Authors (FireUG): Lydia, Alvin 304, Thom.
+
+This software "StoryPop" (including the source code, design documents, product names
+and marks "FireUG", "SSW TV", "StoryPop" and their logos in this repository) is the
+proprietary property of FireUG (SSW TV), protected by copyright and applicable laws.
+
+No part of this software may be copied, modified, merged, published, distributed,
+sublicensed, sold, publicly released, or used for any commercial purpose without the
+prior written permission of FireUG (SSW TV). Copyright notices and brand marks must
+not be removed or altered.
+
+This software is a client-side Chrome extension using a BYOK (bring-your-own-key)
+model to call third-party LLM services chosen by the user; all related costs, data
+transfer, content processing, and privacy compliance are the responsibility of the
+user and their chosen provider.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+To the maximum extent permitted by law, FireUG (SSW TV) shall not be liable for any
+claim, damages, or other liability arising from the use of this software.
+
+For licensing or partnership inquiries, contact FireUG (SSW TV) via
+https://fireusergroup.com/.
