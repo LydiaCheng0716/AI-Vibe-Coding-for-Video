@@ -5,7 +5,7 @@ import ShotList from '../components/ShotList';
 import ExportPanel from '../components/ExportPanel';
 import BgmPanel from '../components/BgmPanel';
 import CharacterPanel from '../components/CharacterPanel';
-import type { Project, BgmPrompt, Character } from '../core/models';
+import type { Project, BgmPrompt, Character, Shot } from '../core/models';
 import { getCurrentProject } from '../services/storage';
 import { subscribeLlmBusy } from '../services/llmLock';
 
@@ -31,17 +31,10 @@ export default function App() {
     };
   }, []);
 
-  // 单镜头保存后更新内存态，仅改该镜头并置 editedByUser（与 storage 一致）。
-  function onShotSaved(shotId: string, prompt: string) {
+  // 单镜头变更（手动保存 / 重写 / 撤销）后整条替换该镜头（storage 已落库）。
+  function onShotChanged(shot: Shot) {
     setProject((prev) =>
-      prev
-        ? {
-            ...prev,
-            shots: prev.shots.map((s) =>
-              s.id === shotId ? { ...s, prompt, editedByUser: true } : s,
-            ),
-          }
-        : prev,
+      prev ? { ...prev, shots: prev.shots.map((s) => (s.id === shot.id ? shot : s)) } : prev,
     );
   }
 
@@ -91,7 +84,7 @@ export default function App() {
                   onProjectUpdated={onProjectUpdated}
                   onCharacterAdded={onCharacterAdded}
                 />
-                <ShotList shots={project.shots} onShotSaved={onShotSaved} />
+                <ShotList project={project} busy={busy} onShotChanged={onShotChanged} />
                 <BgmPanel project={project} busy={busy} onBgmGenerated={onBgmGenerated} />
                 <ExportPanel project={project} />
               </>

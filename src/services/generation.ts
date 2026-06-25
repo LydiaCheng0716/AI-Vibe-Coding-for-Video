@@ -15,9 +15,10 @@ import { STORYBOARD_TIMEOUT_MS, BGM_TIMEOUT_MS, MAX_OUTPUT_TOKENS } from '../cor
 import { validateStory, validateProviderConfig } from '../core/validate';
 import { buildStoryboardPrompt } from '../prompts/storyboard';
 import { buildBgmPrompt } from '../prompts/bgm';
-import { parseStoryboard, parseBgmPrompt, buildProject } from '../core/parse';
-import { injectCharacterConsistency } from '../core/characters';
-import type { BgmPrompt, OutputLanguage } from '../core/models';
+import { parseStoryboard, parseBgmPrompt, buildProject, parseShotRewrite } from '../core/parse';
+import { injectCharacterConsistency, injectCharactersIntoShot } from '../core/characters';
+import { buildShotRewritePrompt, type RewriteMode } from '../prompts/rewrite';
+import type { BgmPrompt, OutputLanguage, Shot } from '../core/models';
 import { ProviderCallError, createProvider, type LlmProvider } from './llm/provider';
 import { hasHostPermission, originForProvider } from './permissions';
 import { getSettings, saveCurrentProject } from './storage';
@@ -236,4 +237,90 @@ export async function generateBgmPrompt(
   retryOpts: RetryOptions = {},
 ): Promise<Result<BgmPrompt>> {
   return withLlmLock(() => withRetry(() => generateBgmPromptAttempt(input, deps), retryOpts));
+}
+
+// ---- 单镜头重写管线（Issue #30 + #32，三入口统一）----
+
+export interface RewriteShotInput {
+  /** 当前项目内存态（story / params / characters / shots）。 */
+  project: Project;
+  shotId: string;
+  mode: RewriteMode;
+  /** mode=feedback：用户一句反馈。 */
+  feedback?: string;
+  /** mode=params（#32）：用户改后的景别/运镜/时长，以此为准覆盖。 */
+  paramOverrides?: Partial<Pick<Shot, 'shotSize' | 'cameraMovement' | 'durationSuggestion'>>;
+  /** 一次性 Key override（不保存 Key 模式）。 */
+  apiKey?: string;
+}
+
+/**
+ * 单次单镜头重写尝试：前置校验 → 单镜头 prompt（三模式）→ provider → 解析 → 组装 + 锁定角色注入，
+ * **不锁不落库**。保留原 id/index/characterRefs；params 模式三参数以用户选值为准；editedByUser=false。
+ * 复用 #29 `injectCharactersIntoShot`：锁定角色锚点逐字注入该镜头、不被模型改写。
+ */
+export async function rewriteShotAttempt(
+  input: RewriteShotInput,
+  deps: PreflightDeps = realDeps,
+): Promise<Result<Shot>> {
+  const shot = input.project.shots.find((s) => s.id === input.shotId);
+  if (!shot) return err('NO_GENERATION_INPUT', '找不到要重写的镜头。');
+  if (input.mode === 'feedback' && !(input.feedback && input.feedback.trim()))
+    return err('NO_GENERATION_INPUT', '请先输入一句优化反馈。');
+
+  const pre = await preflightProvider(deps, input.apiKey);
+  if (!pre.ok) return pre;
+  const { settings, apiKey } = pre.data;
+  const params = input.project.params ?? settings.params;
+  const provider = settings.provider;
+
+  const { system, user } = buildShotRewritePrompt(
+    {
+      story: input.project.story,
+      params,
+      shot,
+      feedback: input.feedback,
+      paramOverrides: input.paramOverrides,
+    },
+    input.mode,
+  );
+
+  let raw: string;
+  try {
+    raw = await callWithTimeout(
+      deps.createProvider(provider),
+      { system, user, model: provider.model, apiKey },
+      STORYBOARD_TIMEOUT_MS,
+    );
+  } catch (e) {
+    return providerErr(e);
+  }
+
+  const parsed = parseShotRewrite(raw);
+  if (!parsed) return err('BAD_RESPONSE_FORMAT', '重写结果格式异常，请重试。');
+
+  const merged: Shot = {
+    ...shot,
+    summary: parsed.summary,
+    shotSize: input.paramOverrides?.shotSize ?? parsed.shotSize,
+    cameraMovement: input.paramOverrides?.cameraMovement ?? parsed.cameraMovement,
+    durationSuggestion: input.paramOverrides?.durationSuggestion ?? parsed.durationSuggestion,
+    prompt: parsed.prompt,
+    editedByUser: false,
+  };
+  const byId = new Map(input.project.characters.map((c) => [c.id, c]));
+  const injected = injectCharactersIntoShot(merged, byId, params.outputLanguage);
+  return ok(injected);
+}
+
+/**
+ * 重写单镜头（Issue #30 A/B + #32）：与整单生成/BGM 共享全局锁（互斥防重复提交）+ 退避重试。
+ * **不自行落库**——UI 成功后调 `storage.replaceShot` 持久化（与 BGM 一致的约定）。
+ */
+export async function rewriteShot(
+  input: RewriteShotInput,
+  deps: PreflightDeps = realDeps,
+  retryOpts: RetryOptions = {},
+): Promise<Result<Shot>> {
+  return withLlmLock(() => withRetry(() => rewriteShotAttempt(input, deps), retryOpts));
 }

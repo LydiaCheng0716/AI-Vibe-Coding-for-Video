@@ -11,6 +11,7 @@ import {
   updateCurrentProjectBgm,
   updateCharacter,
   addCharacter,
+  replaceShot,
 } from '../../src/services/storage';
 import { defaultSettings, defaultParams } from '../../src/core/defaults';
 import { emptyProfile } from '../../src/core/characterProfile';
@@ -209,5 +210,29 @@ describe('storage: 角色调校（Issue #29）', () => {
   it('addCharacter 无项目 → 报错', async () => {
     const r = await addCharacter({ name: 'x', appearance: '', profile: emptyProfile() });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('storage: replaceShot（Issue #30/#32）', () => {
+  it('整条替换目标镜头，保留 id/index，其余不变', async () => {
+    await saveCurrentProject(mkProject());
+    const rewritten: Shot = {
+      ...mkShot('ignored', 99),
+      summary: '改写后',
+      prompt: '重写的提示词',
+    };
+    const r = await replaceShot('s2', rewritten);
+    expect(r.ok).toBe(true);
+    const p = await getCurrentProject();
+    expect(p?.shots[1]).toMatchObject({ id: 's2', index: 2, summary: '改写后', prompt: '重写的提示词' });
+    expect(p?.shots[0]).toMatchObject({ id: 's1', prompt: 'prompt-s1' }); // 其它不变
+  });
+
+  it('无项目 / 无匹配 → ok 无副作用', async () => {
+    expect((await replaceShot('s1', mkShot('s1', 1))).ok).toBe(true);
+    await saveCurrentProject(mkProject());
+    expect((await replaceShot('sX', mkShot('sX', 9))).ok).toBe(true);
+    const p = await getCurrentProject();
+    expect(p?.shots).toHaveLength(3);
   });
 });
