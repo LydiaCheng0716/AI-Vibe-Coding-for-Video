@@ -1,8 +1,10 @@
-# AI 软件工厂
+# StoryPop · AI 软件工厂
 
-多 Agent 协作开发工作流，Human PO 全程参与关键决策。
+> **本项目由 [FireUG / SSW TV](https://fireusergroup.com/) 开发制作。** © 2026 FireUG (SSW TV)，保留所有权利。详见 [版权与许可](#版权与许可)。
 
-> **首个产品 StoryPop — MVP 已完成。** TASK-001~009（九个任务）已全部实现、过三道质量门（CI + Kimi 外部评审 + Codex 终审）并合并到 `develop`。安装与使用见下方 [StoryPop — 安装与使用](#storypop--安装与使用)。
+**Human PO 把关关键决策（提需求 · 批准架构 · 批准合并 · 最终决策 · 部署），中途的设计 / 实现 / 自检 / 评审由 AFK 自主工作流（Claude 驱动）+ 独立外部评审门（Kimi / Codex）完成。**
+
+> **StoryPop 已完成 MVP + 多轮优化。** 首发 MVP（TASK-001~009）后又经多轮迭代：Provider 预设、测试连接、结构化角色卡与角色库、单镜头迭代/调参重写、全局风格锁、镜头增删排序、转场建议、每镜首帧图像提示词、中英双语与自动翻译同步、Token 提示、批量导出等。全部经 CI + CTO 自评 + 外部评审门并合并到 `develop`。安装与使用见 [StoryPop — 安装与使用](#storypop--安装与使用)。
 
 ---
 
@@ -14,57 +16,39 @@
 
 ---
 
-## 角色一览
+## 角色一览（现行）
 
-| Agent | 职责 | 不负责 |
-|-------|------|--------|
-| **Human PO** | 提需求、定优先级、做审批 | 写代码 |
-| **PO Assistant** | 技术内容翻译成业务语言 | 做决策 |
-| **PM Agent** | PRD、用户故事、任务拆解 | 选技术方案 |
-| **Architect Agent** | 系统设计、API、数据库设计 | 写业务代码 |
-| **架构 Review Agent** | 审查架构风险 | 重新设计 |
-| **Developer Agent** | 实现任务、编写测试 | 改架构 |
-| **Code Review Agent** | 审查 PR 的正确性与安全性 | 实现修复 |
-| **QA Agent** | 测试功能行为、上报 Bug | 修复 Bug |
-| **Deploy Agent** | CI/CD、Docker、云端部署 | 写业务功能 |
+| 角色 | 职责 | 不负责 |
+|------|------|--------|
+| **Human PO** | 提需求、定 scope/顺序、批准架构、批准合并、最终决策、部署 | 写代码、跑中途流程 |
+| **AFK 工作流**（Claude 驱动） | 每条 Issue：设计文档 → TDD → 对抗自检 → lint/test/build → CTO 自评 → merge-when-green | 合红 CI、合未过门分支、部署 |
+| **外部评审门**（Kimi → Codex） | 独立只读评审结构性问题（gate ≠ implementer） | 写代码、做最终决策 |
+
+> 早期的「多 Agent 工厂」（PM/Architect/Developer/QA 等独立终端角色，提示词见 `.agents/`）职责已收敛进 AFK 工作流的各阶段，保留备查。详见 [agents.md](agents.md)。
 
 ---
 
-## 工作流
+## 工作流（现行）
 
 ```
-Human PO（提出需求）
-    │
-    ▼
-PM Agent → PRD.md + GitHub Issues（每任务一个）
-    │
-    ▼
-Architect Agent → architecture.md + api-spec.md + db-design.md
-    │
-    ▼
-架构 Review Agent → 架构审查报告
-    │
-    ▼
-PO Assistant → 通俗语言汇报
-    │
-    ▼
-Human PO → 批准架构
-    │
-    ▼
-Developer Agent → feature 分支 + PR（每个任务独立）
-    │
-    ▼
-Code Review Agent → 代码审查报告
-    │
-    ▼
-QA Agent → 测试报告
-    │
-    ▼
-PO Assistant → Sprint 总结汇报
-    │
-    ▼
-Human PO → 批准合并 → develop → main
+Human PO ── 提需求 · 定 scope/顺序/合并策略 ──▶ 交付「已审定的 Issue 队列」
+                                                      │
+                                                      ▼
+              AFK 自主工作流（Claude 驱动，每条 Issue 瀑布）
+              设计文档(docs/specs) → TDD(RED→GREEN) → 对抗自检
+                       → lint·test·build 全绿 → CTO 自评(cto-pr-review)
+                                                      │
+                                                      ▼
+              独立外部评审门（gate ≠ implementer）：Kimi → Codex
+                                                      │  merge-when-green
+                                                      ▼
+                       develop ──（累积稳定后，Human PO 批准）──▶ main
+                                                      │
+                                                      ▼
+                          部署 / 发布：Human PO（合并 ≠ 部署）
 ```
+
+> 关键边界：架构先经 PO 批准；外部门模型必不同于实现模型；绝不合红 CI；合并 ≠ 部署；最终决策始终 Human PO。
 
 ---
 
@@ -72,15 +56,19 @@ Human PO → 批准合并 → develop → main
 
 ```
 AI-Vibe-Coding-for-Video/
-├── docs/                        # 设计文档（StoryPop）
+├── src/                         # StoryPop 实现（sidepanel / components / services / core / prompts）
+├── tests/unit/                  # 单元测试（Vitest）
+├── docs/                        # 设计文档
 │   ├── PRD.md                   # 产品需求文档
 │   ├── architecture.md          # 系统架构设计（含目录结构与 manifest 骨架）
 │   ├── api-spec.md              # 服务契约 + 出站 LLM 调用契约
-│   └── db-design.md             # 本地存储设计（chrome.storage / IndexedDB）
+│   ├── db-design.md             # 本地存储设计（chrome.storage / IndexedDB）
+│   └── specs/                   # 每条任务的设计文档（AFK 工作流逐条产出）
 │                                # 任务详情见 GitHub Issues，非 docs/
-├── skill/                       # 复用的工作流 Skills（afk、ui-ux-pro-max 等）
-├── agents.md                    # Agent 分工与工作流总说明
-└── .agents/                     # 各 Agent 提示词文件
+├── skill/                       # 复用的工作流 Skills（afk、cto-pr-review、kimi/codex-review、ui-ux-pro-max 等）
+├── agents.md                    # 开发工作流总说明（现行 AFK + Human PO 把关）
+├── LICENSE                      # 版权与许可（FireUG / SSW TV，保留所有权利）
+└── .agents/                     # 历史「多 Agent 工厂」各角色提示词（保留备查）
     ├── po-assistant.md  pm.md  architect.md  architecture-reviewer.md
     └── developer.md  reviewer.md  qa.md  deploy.md
 ```
@@ -145,7 +133,7 @@ npm run build      # 产物输出到 dist/
 ```bash
 npm run dev     # 开发（Vite + HMR）
 npm run lint    # 类型检查（tsc --noEmit）
-npm run test    # 单元测试（Vitest，173 用例）
+npm run test    # 单元测试（Vitest，381 用例）
 npm run build   # 类型检查 + 生产构建（dist/）
 ```
 
@@ -154,43 +142,24 @@ npm run build   # 类型检查 + 生产构建（dist/）
 ## Git 工作流
 
 ```
-main          ← 仅用于生产发布
+main          ← 仅用于生产发布（累积稳定后由 Human PO 合入）
   └── develop ← 集成分支
-        └── feature/task-XXX-title  ← 每个任务独立分支
+        └── feature/issue-NN-title  ← 每个 Issue 一条分支、一个 PR
 ```
 
-每个 Developer Agent 在独立的 git worktree 中工作。合并到 `develop` 需要 Code Review Agent 通过，合并到 `main` 需要 Human PO 审批。
+AFK 工作流对每条 Issue 走 `feature/issue-NN-*` 分支：CI 绿 + CTO 自评 + 外部评审门通过即 **merge-when-green** 合回 `develop`；合并到 `main` 由 **Human PO** 审批。**合并 ≠ 部署**：发布由 Human PO。
 
 ---
 
-## 如何启动新项目
+## 如何启动 / 推进一轮任务（现行 AFK 流程）
 
-1. **Human PO** 用一段话描述产品目标
-2. 打开 **Terminal 1** → 加载 PM Agent：将 `.agents/pm.md` 作为上下文
-3. PM Agent 生成 `docs/PRD.md`，并为每个任务创建一个 GitHub Issue（任务的唯一事实源）
-4. 打开 **Terminal 2** → 加载 Architect Agent：将 `.agents/architect.md` 作为上下文
-5. Architect 生成 `docs/architecture.md`、`docs/api-spec.md`、`docs/db-design.md`
-6. 打开 **Terminal 3** → 加载架构 Review Agent：将 `.agents/architecture-reviewer.md` 作为上下文
-7. 架构 Review Agent 生成审查报告
-8. **PO Assistant** 向 Human PO 汇报 → **PO 批准架构**
-9. 打开 **Terminal 4** → 每个任务加载 Developer Agent
-10. Developer 提交 PR → Code Review Agent 审查 → QA Agent 测试
-11. **PO 批准合并**
+1. **Human PO** 描述需求 / 优先级；与工作流敲定 PRD 与架构方向（PO 批准架构）。
+2. 把每条任务落成 **GitHub Issue**（任务唯一事实源），并定好**顺序 / 批次 / 合并策略**。
+3. 把这份**已审定的 Issue 队列**交给 AFK 工作流（例如 `/afk`，Claude 驱动；或 `/afk codex`）。
+4. 工作流对每条 Issue 自主执行瀑布：设计文档 → TDD → 对抗自检 → lint/test/build 全绿 → CTO 自评 → 外部评审门（Kimi→Codex）→ **merge-when-green** 进 `develop`；并自我接续（cron relay）。
+5. **Human PO** 在合并点与方向上把关；累积稳定后批准合入 `main`；**部署 / 发布由 PO**。
 
----
-
-## 推荐 VS Code 配置
-
-每个 Agent 使用独立 Terminal，加载对应的 `.md` 文件作为上下文后再下达指令。
-
-```
-Terminal 1：PM Agent          (.agents/pm.md)
-Terminal 2：Architect         (.agents/architect.md)
-Terminal 3：架构 Review       (.agents/architecture-reviewer.md)
-Terminal 4：Developer         (.agents/developer.md)
-Terminal 5：Code Review       (.agents/reviewer.md)
-Terminal 6：QA                (.agents/qa.md)
-```
+> AFK 工作流的权威规范见 [`skill/afk/SKILL.md`](skill/afk/SKILL.md)。
 
 ---
 
@@ -213,4 +182,17 @@ Terminal 6：QA                (.agents/qa.md)
 
 ---
 
-> 详细的 Agent 分工说明及协作流程，见 [agents.md](agents.md)
+## 版权与许可
+
+**StoryPop 由 [FireUG / SSW TV](https://fireusergroup.com/) 开发制作。**
+
+© 2026 FireUG（SSW TV）。**保留所有权利（All Rights Reserved）。**
+
+- 本仓库及 StoryPop 的源代码、设计文档、品牌名称与标识（FireUG / SSW TV / StoryPop 及其 Logo）均为 FireUG（SSW TV）的财产。
+- 未经 FireUG（SSW TV）事先书面许可，**不得复制、修改、分发、再许可、公开发布或用于商业用途**。
+- 本软件按「现状」提供，不附带任何明示或默示担保；使用过程中因调用第三方 LLM 服务（BYOK）产生的费用、数据处理与隐私责任由使用者及其所选服务商承担。
+- 完整条款见仓库根目录 [LICENSE](LICENSE)。如需授权或合作，请通过 [fireusergroup.com](https://fireusergroup.com/) 联系。
+
+---
+
+> 详细的开发工作流说明，见 [agents.md](agents.md)
