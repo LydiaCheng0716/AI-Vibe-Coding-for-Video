@@ -241,3 +241,27 @@ describe('parseStoryboard: 角色与 characterRefs', () => {
     if (r.ok) expect(r.characters).toEqual([]);
   });
 });
+
+describe('parseStoryboard: 全局风格（Issue #55）', () => {
+  it('解析 globalStyle profile + suggestions', () => {
+    const raw = JSON.stringify({
+      globalStyle: {
+        profile: { colorGrade: '暖金', lighting: '柔和侧光', lensFocal: '', filmTexture: '', mood: '治愈' },
+        suggestions: { lensFocal: ['35mm', '50mm', '85mm'] },
+      },
+      shots: threeShots,
+    });
+    const r = parseStoryboard(raw, 'zh');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.globalStyle?.profile.colorGrade).toBe('暖金');
+      expect(r.globalStyle?.suggestions?.lensFocal).toEqual(['35mm', '50mm', '85mm']);
+      expect(r.globalStyle?.locked).toBe(false); // 默认未锁
+    }
+  });
+  it('缺 globalStyle → undefined（向后兼容）', () => {
+    const r = parseStoryboard(JSON.stringify({ shots: threeShots }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.globalStyle).toBeUndefined();
+  });
+})

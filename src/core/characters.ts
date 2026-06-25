@@ -87,12 +87,18 @@ export function injectCharacterConsistency(project: Project): Project {
   return { ...project, shots: project.shots.map((s) => injectCharactersIntoShot(s, byId, lang)) };
 }
 
-/** 去掉本模块注入的「角色一致性参考」块（始终在 prompt 末尾），还原原始 prompt。 */
+/**
+ * 去掉本模块注入的「角色一致性参考」块（**有界**：仅删本块到下一个 `\n\n`/结尾，不误删其后的
+ * 全局风格块等其它注入块——两类注入块顺序无关、互不干扰，Codex P2）。块内行以单 `\n` 连接、无 `\n\n`。
+ */
 function stripInjectedBlock(prompt: string, lang: OutputLanguage): string {
   const header = HEADER[lang] ?? HEADER.zh;
   const marker = `\n\n${header}\n`;
-  const idx = prompt.indexOf(marker);
-  return idx >= 0 ? prompt.slice(0, idx) : prompt;
+  const start = prompt.indexOf(marker);
+  if (start < 0) return prompt;
+  const nextBlank = prompt.indexOf('\n\n', start + marker.length);
+  const end = nextBlank >= 0 ? nextBlank : prompt.length;
+  return prompt.slice(0, start) + prompt.slice(end);
 }
 
 /**

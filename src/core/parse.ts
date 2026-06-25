@@ -6,12 +6,16 @@ import type {
   CharacterFieldKey,
   CharacterProfile,
   GenerationParams,
+  GlobalStyle,
   OutputLanguage,
   Project,
   Shot,
+  StyleFieldKey,
+  StyleProfile,
 } from './models';
 import { SCHEMA_VERSION } from './config';
 import { CHARACTER_FIELD_KEYS, composeAppearance } from './characterProfile';
+import { STYLE_FIELD_KEYS } from './styleProfile';
 
 export const SHOTS_MIN = 3;
 export const SHOTS_MAX = 10;
@@ -23,7 +27,7 @@ export const CHAR_SUGGESTIONS_MAX = 4;
 
 /** 解析结果：成功给结构化数据，失败只给原因（由调用方转成 BAD_RESPONSE_FORMAT）。 */
 export type ParseResult =
-  | { ok: true; characters: Character[]; shots: Shot[] }
+  | { ok: true; characters: Character[]; shots: Shot[]; globalStyle?: GlobalStyle }
   | { ok: false; reason: string };
 
 // ---- 解析接受范围（ADR-6(2)）----
@@ -142,6 +146,38 @@ function parseSuggestions(raw: unknown): Partial<Record<CharacterFieldKey, strin
   return any ? out : undefined;
 }
 
+/** 解析全局风格档（Issue #55）：profile 5 字段 + suggestions；全空 → undefined。 */
+function parseGlobalStyle(raw: unknown): GlobalStyle | undefined {
+  if (!isObj(raw)) return undefined;
+  const profileRaw = isObj(raw.profile) ? raw.profile : raw; // 容忍模型直接平铺字段
+  const profile = {} as StyleProfile;
+  let anyProfile = false;
+  for (const key of STYLE_FIELD_KEYS) {
+    const v = cleanStr(profileRaw[key]);
+    profile[key] = v;
+    if (v) anyProfile = true;
+  }
+  const suggestionsRaw = raw.suggestions;
+  const suggestions: Partial<Record<StyleFieldKey, string[]>> = {};
+  let anySug = false;
+  if (isObj(suggestionsRaw)) {
+    for (const key of STYLE_FIELD_KEYS) {
+      const arr = suggestionsRaw[key];
+      if (!Array.isArray(arr)) continue;
+      const cleaned = Array.from(new Set(arr.map(cleanStr).filter((s) => s.length > 0))).slice(
+        0,
+        CHAR_SUGGESTIONS_MAX,
+      );
+      if (cleaned.length > 0) {
+        suggestions[key] = cleaned;
+        anySug = true;
+      }
+    }
+  }
+  if (!anyProfile && !anySug) return undefined;
+  return { profile, ...(anySug ? { suggestions } : {}), locked: false };
+}
+
 /**
  * 解析 + 校验 LLM 原始文本为结构化分镜。归一化：补 id/index/editedByUser，
  * characterRefs 按 name 或序号归一到内部 Character.id，对不上的引用丢弃（ADR-6(3)）。
@@ -235,7 +271,9 @@ export function parseStoryboard(raw: string, lang: OutputLanguage = 'zh'): Parse
   }
 
   // 注：分镜生成 prompt 不请求 bgm；BGM 由 TASK-007 独立服务生成。此处不解析 bgm。
-  return { ok: true, characters, shots };
+  // Issue #55：解析全局风格档（缺省兼容）。
+  const globalStyle = parseGlobalStyle(obj.globalStyle);
+  return { ok: true, characters, shots, ...(globalStyle ? { globalStyle } : {}) };
 }
 
 /**
@@ -302,7 +340,7 @@ export function parseShotRewrite(
 export function buildProject(
   story: string,
   params: GenerationParams,
-  parsed: { characters: Character[]; shots: Shot[] },
+  parsed: { characters: Character[]; shots: Shot[]; globalStyle?: GlobalStyle },
 ): Project {
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -310,5 +348,6 @@ export function buildProject(
     params,
     characters: parsed.characters,
     shots: parsed.shots,
+    ...(parsed.globalStyle ? { globalStyle: parsed.globalStyle } : {}),
   };
 }

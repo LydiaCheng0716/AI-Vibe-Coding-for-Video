@@ -94,6 +94,25 @@ export interface BgmPrompt {
   language: OutputLanguage;
 }
 
+/** 全局风格档固定字段键（Issue #55）。 */
+export type StyleFieldKey = 'colorGrade' | 'lighting' | 'lensFocal' | 'filmTexture' | 'mood';
+
+/** 全局视觉风格档：整片统一锚点（Issue #55）。色调/光线/镜头焦段/胶片质感/整体氛围。 */
+export interface StyleProfile {
+  colorGrade: string;
+  lighting: string;
+  lensFocal: string;
+  filmTexture: string;
+  mood: string;
+}
+
+/** 全局风格锁（Issue #55）：结构化档案 + 每字段候选建议 + 锁定标记（仿 #29）。 */
+export interface GlobalStyle {
+  profile: StyleProfile;
+  suggestions?: Partial<Record<StyleFieldKey, string[]>>;
+  locked?: boolean;
+}
+
 export interface Project {
   schemaVersion: number;
   story: string;
@@ -101,6 +120,8 @@ export interface Project {
   characters: Character[];
   shots: Shot[];
   bgm?: BgmPrompt;
+  /** 全局风格锁（Issue #55）；optional 向后兼容。 */
+  globalStyle?: GlobalStyle;
 }
 
 /** 面向用户的错误码（对齐 api-spec §2，全集）。 */

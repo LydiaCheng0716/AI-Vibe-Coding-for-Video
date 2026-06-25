@@ -17,6 +17,7 @@ import { buildStoryboardPrompt } from '../prompts/storyboard';
 import { buildBgmPrompt } from '../prompts/bgm';
 import { parseStoryboard, parseBgmPrompt, buildProject, parseShotRewrite } from '../core/parse';
 import { injectCharacterConsistency, injectCharactersIntoShot } from '../core/characters';
+import { injectGlobalStyle, injectStyleIntoShot } from '../core/style';
 import { buildShotRewritePrompt, pickOverride, type RewriteMode } from '../prompts/rewrite';
 import type { BgmPrompt, OutputLanguage, Shot } from '../core/models';
 import { ProviderCallError, createProvider, type LlmProvider } from './llm/provider';
@@ -158,7 +159,8 @@ export async function generateStoryboardAttempt(
   if (!parsed.ok) return err('BAD_RESPONSE_FORMAT', '生成结果格式异常，请重试。');
 
   // 人物一致性注入（TASK-005）：把引用角色的统一外观注入对应镜头 prompt。
-  const project = injectCharacterConsistency(buildProject(input.story, params, parsed));
+  // 人物一致性 + 全局风格（Issue #55）注入：把锁定角色/风格锚点注入各镜头 prompt。
+  const project = injectGlobalStyle(injectCharacterConsistency(buildProject(input.story, params, parsed)));
   return ok(project);
 }
 
@@ -343,8 +345,10 @@ export async function rewriteShotAttempt(
     ...(parsed.promptEn || shot.promptEn ? { promptEn: parsed.promptEn ?? shot.promptEn } : {}),
     editedByUser: false,
   };
+  // 锁定角色锚点 + 全局风格锚点（Issue #55）注入：重写/调参后仍保持，不被模型改写。
   const byId = new Map(input.project.characters.map((c) => [c.id, c]));
-  const injected = injectCharactersIntoShot(merged, byId, params.outputLanguage);
+  const withChars = injectCharactersIntoShot(merged, byId, params.outputLanguage);
+  const injected = injectStyleIntoShot(withChars, input.project.globalStyle, params.outputLanguage);
   return ok(injected);
 }
 

@@ -236,3 +236,39 @@ describe('storage: replaceShot（Issue #30/#32）', () => {
     expect(p?.shots).toHaveLength(3);
   });
 });
+
+describe('storage: updateGlobalStyle（Issue #55）', () => {
+  it('合并 profile + 锁定 → 重注入风格锚点到镜头', async () => {
+    const { updateGlobalStyle } = await import('../../src/services/storage');
+    await saveCurrentProject(mkProject());
+    let r = await updateGlobalStyle({ profile: { colorGrade: '暖金', lighting: '', lensFocal: '', filmTexture: '', mood: '治愈' } });
+    expect(r.ok).toBe(true);
+    r = await updateGlobalStyle({ locked: true });
+    expect(r.ok).toBe(true);
+    const p = await getCurrentProject();
+    expect(p?.globalStyle?.locked).toBe(true);
+    expect(p?.shots[0].prompt).toContain('色调/调色:暖金');
+  });
+
+  it('无项目 → ok(null)', async () => {
+    const { updateGlobalStyle } = await import('../../src/services/storage');
+    expect(await updateGlobalStyle({ locked: true })).toMatchObject({ ok: true, data: null });
+  });
+})
+
+describe('storage: 角色编辑保持全局风格锚点（Codex P2 #55）', () => {
+  it('锁定风格后改角色档案，镜头仍含风格锚点', async () => {
+    const { updateGlobalStyle, updateCharacter } = await import('../../src/services/storage');
+    const p = mkProject();
+    p.characters = [mkChar()];
+    p.shots[0] = { ...p.shots[0], characterRefs: ['c1'] };
+    await saveCurrentProject(p);
+    await updateGlobalStyle({ profile: { colorGrade: '暖金', lighting: '', lensFocal: '', filmTexture: '', mood: '' } });
+    await updateGlobalStyle({ locked: true });
+    // 触发角色重注入
+    await updateCharacter('c1', { profile: { ...emptyProfile(), hair: '金色短发' } });
+    const after = await getCurrentProject();
+    expect(after?.shots[0].prompt).toContain('色调/调色:暖金'); // 风格锚点未被角色重注入抹掉
+    expect(after?.shots[0].prompt).toContain('金色短发'); // 角色锚点也在
+  });
+})

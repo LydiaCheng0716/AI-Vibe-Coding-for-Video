@@ -5,6 +5,7 @@ import ShotList from '../components/ShotList';
 import ExportPanel from '../components/ExportPanel';
 import BgmPanel from '../components/BgmPanel';
 import CharacterPanel from '../components/CharacterPanel';
+import StylePanel from '../components/StylePanel';
 import DraftsPanel from '../components/DraftsPanel';
 import type { Project, BgmPrompt, Character, Shot } from '../core/models';
 import { getCurrentProject, getSettings, saveCurrentProject } from '../services/storage';
@@ -16,6 +17,14 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   // 读一次「是否保存 Key」下传给各镜头卡（避免每卡各读一次 storage）。
   const [persistApiKey, setPersistApiKey] = useState(true);
+  // 每次「加载新项目」（生成/打开草稿）自增，用作 StylePanel 的 key 使其重挂载、重新播种本地草稿
+  // （避免切项目后面板留旧项目风格、blur/锁定覆盖新项目，Codex P2）。编辑同项目不变更此 key。
+  const [projectLoadKey, setProjectLoadKey] = useState(0);
+
+  function loadNewProject(p: Project) {
+    setProject(p);
+    setProjectLoadKey((k) => k + 1);
+  }
 
   // 侧边栏重开时恢复上次分镜结果；订阅全局加载态（TASK-009）。
   useEffect(() => {
@@ -77,7 +86,7 @@ export default function App() {
   async function onOpenDraft(p: Project): Promise<boolean> {
     const r = await saveCurrentProject(p);
     if (!r.ok) return false;
-    setProject(p);
+    loadNewProject(p);
     return true;
   }
 
@@ -102,10 +111,19 @@ export default function App() {
           <SettingsPanel />
         ) : (
           <>
-            <StoryInput onGenerated={setProject} busy={busy} />
+            <StoryInput onGenerated={loadNewProject} busy={busy} />
             <DraftsPanel project={project} onOpen={onOpenDraft} />
             {project && (
               <>
+                <StylePanel
+                  key={projectLoadKey}
+                  globalStyle={project.globalStyle}
+                  story={project.story}
+                  lang={project.params.outputLanguage}
+                  busy={busy}
+                  persistApiKey={persistApiKey}
+                  onProjectUpdated={onProjectUpdated}
+                />
                 <CharacterPanel
                   characters={project.characters}
                   story={project.story}
