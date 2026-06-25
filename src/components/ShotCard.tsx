@@ -205,6 +205,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
     const text = from === 'zh' ? draft : draftEn;
     if (!text.trim()) return;
     const target: 'zh' | 'en' = from === 'zh' ? 'en' : 'zh';
+    const before = target === 'en' ? draftEn : draft; // 目标框翻译前快照
     translatingRef.current = true;
     setTranslating(target);
     setNotice(null);
@@ -212,8 +213,9 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
       const apiKey = persistApiKey ? undefined : tempKey.trim() || undefined;
       const r = await translateText({ text, targetLang: target, apiKey });
       if (r.ok) {
-        if (target === 'en') setDraftEn(r.data);
-        else setDraft(r.data);
+        // 仅当目标框自请求发起后未被用户改动时才写入，避免覆盖用户在途编辑（Codex P2）。
+        if (target === 'en') setDraftEn((cur) => (cur === before ? r.data : cur));
+        else setDraft((cur) => (cur === before ? r.data : cur));
       } else {
         setNotice(`翻译失败，可重试：${r.error.message}`);
       }
@@ -324,6 +326,16 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
               编辑后自动翻译同步另一语言（默认关，避免误触消耗额度）
               {translating && <span className="text-blue-600">翻译中…</span>}
             </label>
+          )}
+          {shot.promptEn !== undefined && autoSync && !persistApiKey && (
+            <input
+              type="password"
+              autoComplete="off"
+              className="w-full rounded border border-amber-300 p-1 text-[11px] outline-none focus:border-amber-500"
+              placeholder="一次性 API Key（已关闭保存，用于自动翻译，不落盘）"
+              value={tempKey}
+              onChange={(e) => setTempKey(e.target.value)}
+            />
           )}
           {shot.promptEn !== undefined && (
             <span className="text-[11px] font-medium text-gray-500">中文</span>
