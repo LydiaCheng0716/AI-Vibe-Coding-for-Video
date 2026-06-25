@@ -223,9 +223,20 @@ export default function SettingsPanel() {
           </div>
           </label>
         ) : (
-          <p className="text-[11px] leading-snug text-amber-700">
-            已关闭保存：API Key 不会落盘，每次生成时在生成区临时输入，用完即弃。
-          </p>
+          <label className="text-xs">
+            API Key（本次测试用，不保存、不落盘）
+            <input
+              type="password"
+              autoComplete="off"
+              className="mt-1 w-full rounded border border-amber-300 p-1 text-sm outline-none focus:border-amber-500"
+              placeholder="粘贴一次性 Key 用于「测试连接」"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] leading-snug text-amber-700">
+              已关闭保存：Key 不会落盘。生成时在生成区临时输入；此处填的 Key 仅用于「测试连接」，用完即弃。
+            </p>
+          </label>
         )}
         {settings.persistApiKey && (
           <p className="text-[11px] leading-snug text-gray-500">

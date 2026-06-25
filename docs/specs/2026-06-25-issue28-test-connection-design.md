@@ -69,6 +69,7 @@
 
 ### 2.4 UI（`SettingsPanel.tsx`）
 - 「测试连接」按钮（在 provider 配置区）。点击：用**表单 state** 构造 `provider`；Key 用 `keyInput`（刚填未存）有则用之，否则交给服务取已存 Key。
+- **不落盘模式也可测**（Codex 外门 P2）：`persistApiKey=false` 时渲染一个一次性 Key 输入（绑定 `keyInput`），仅作「测试连接」的 override 传入、永不保存——否则该模式下没有 Key 字段、测试恒返回 `NO_API_KEY`。
 - 自定义/预设非静态域名：点击是用户手势，先 `hasHostPermission`，无则 `requestHostPermission` 当场申请，再测。
 - 展示 `testing`/结果文案；不触发保存。
 
