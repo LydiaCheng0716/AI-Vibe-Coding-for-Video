@@ -68,13 +68,13 @@ export default function ShotList({ project, busy, persistApiKey, onShotChanged, 
     if (disabled) return;
     if (!window.confirm('确定删除这个镜头？可点「撤销」恢复。')) return;
     setNotice(null);
-    await applyShots(project.shots, deleteShotById(project.shots, shotId));
+    await applyShots(ordered, deleteShotById(ordered, shotId));
   }
 
   async function onMove(shotId: string, toIndex: number) {
     if (disabled) return;
     setNotice(null);
-    await applyShots(project.shots, moveShot(project.shots, shotId, toIndex));
+    await applyShots(ordered, moveShot(ordered, shotId, toIndex));
   }
 
   async function onInsert(arrayIndex: number, desc: string) {
@@ -82,9 +82,9 @@ export default function ShotList({ project, busy, persistApiKey, onShotChanged, 
     setWorking(true);
     setNotice(null);
     try {
-      const blank = makeBlankShot(project.shots);
-      const next = insertShotAt(project.shots, arrayIndex, blank);
-      const updated = await applyShots(project.shots, next);
+      const blank = makeBlankShot(ordered);
+      const next = insertShotAt(ordered, arrayIndex, blank);
+      const updated = await applyShots(ordered, next);
       if (!updated) return;
       // 有描述 → 复用 #30 重写管线即时生成填充（注入锁定角色 + 全局风格）。
       if (desc.trim()) {
