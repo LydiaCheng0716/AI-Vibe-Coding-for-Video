@@ -5,6 +5,7 @@ import { saveApiKey, getMaskedApiKey, clearApiKey } from '../services/keyVault';
 import { defaultSettings } from '../core/defaults';
 import { originForProvider, hasHostPermission, requestHostPermission } from '../services/permissions';
 import { PROVIDER_PRESETS, applyPreset, presetIdForProvider, getPreset } from '../core/providerPresets';
+import { testConnection } from '../services/connectionTest';
 
 const VIDEO_MODELS: VideoModel[] = ['generic', 'jimeng', 'keling', 'sora', 'runway'];
 const ASPECTS = ['16:9', '9:16', '1:1'];
@@ -16,6 +17,10 @@ export default function SettingsPanel() {
   const [maskedKey, setMaskedKey] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
+  // 测试连接（Issue #28）：独立于保存流程的自检状态。
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState<string | null>(null);
+  const [testOk, setTestOk] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -86,6 +91,36 @@ export default function SettingsPanel() {
       setMsg('API Key 已加密保存。');
     } else {
       setMsg(r.error.message);
+    }
+  }
+
+  async function onTestConnection() {
+    setTesting(true);
+    setTestMsg(null);
+    try {
+      const provider = settings.provider;
+      // 自定义/预设非静态域名：在用户手势内当场申请 host 权限，再测（与保存流程一致）。
+      if (provider.kind === 'openai-compatible' && provider.baseUrl && provider.baseUrl.trim()) {
+        const origin = originForProvider(provider);
+        if (origin && !(await hasHostPermission(origin))) {
+          await requestHostPermission(origin);
+        }
+      }
+      // Key：设置区刚填未存的 keyInput 优先；否则交给服务取已保存的加密 Key。测试不落盘。
+      const apiKey = keyInput.trim() || undefined;
+      const r = await testConnection({ provider, apiKey });
+      if (r.ok) {
+        setTestOk(true);
+        setTestMsg(`✅ 连接成功（延迟 ${r.latencyMs}ms）`);
+      } else {
+        setTestOk(false);
+        setTestMsg(`❌ ${r.message}`);
+      }
+    } catch {
+      setTestOk(false);
+      setTestMsg('❌ 测试失败，请重试。');
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -197,6 +232,22 @@ export default function SettingsPanel() {
             你的 API Key 已在本机加密保存，只用于直接调用 AI 服务。本地加密能降低硬盘被读取时的泄露风险，
             但无法防护已被恶意软件控制的浏览器或设备——请只在你信任的电脑上保存 Key。
           </p>
+        )}
+
+        {/* 测试连接（Issue #28）：保存前发极小请求自检，分类报告问题。不写入持久状态。 */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onTestConnection}
+            disabled={testing}
+            className="rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+          >
+            {testing ? '测试中…' : '测试连接'}
+          </button>
+          <span className="text-[11px] text-gray-500">发一个极小请求自检，不保存、不落盘</span>
+        </div>
+        {testMsg && (
+          <p className={`text-xs ${testOk ? 'text-green-700' : 'text-red-600'}`}>{testMsg}</p>
         )}
       </div>
 

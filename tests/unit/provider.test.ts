@@ -2,9 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { mapHttpStatus, mapFetchError, ProviderCallError } from '../../src/services/llm/provider';
 
 describe('mapHttpStatus（api-spec §5）', () => {
-  it('401/403 → AUTH_FAILED 不重试', () => {
+  it('401 → AUTH_FAILED 不重试', () => {
     expect(mapHttpStatus(401)).toEqual({ code: 'AUTH_FAILED', retriable: false });
-    expect(mapHttpStatus(403)).toEqual({ code: 'AUTH_FAILED', retriable: false });
+  });
+  it('403 → FORBIDDEN 不重试（Issue #28 从 AUTH_FAILED 拆出）', () => {
+    expect(mapHttpStatus(403)).toEqual({ code: 'FORBIDDEN', retriable: false });
+  });
+  it('404 → MODEL_NOT_FOUND 不重试（Issue #28 从 BAD_RESPONSE_FORMAT 拆出）', () => {
+    expect(mapHttpStatus(404)).toEqual({ code: 'MODEL_NOT_FOUND', retriable: false });
+  });
+  it('402 → QUOTA_EXCEEDED 不重试（额度/欠费）', () => {
+    expect(mapHttpStatus(402)).toEqual({ code: 'QUOTA_EXCEEDED', retriable: false });
   });
   it('408 → NETWORK_ERROR 可重试（kimi MED）', () => {
     expect(mapHttpStatus(408)).toEqual({ code: 'NETWORK_ERROR', retriable: true });
@@ -15,8 +23,9 @@ describe('mapHttpStatus（api-spec §5）', () => {
   it('5xx → NETWORK_ERROR 可重试', () => {
     expect(mapHttpStatus(503)).toEqual({ code: 'NETWORK_ERROR', retriable: true });
   });
-  it('其余 4xx → BAD_RESPONSE_FORMAT 不重试', () => {
+  it('其余 4xx（400/422）→ BAD_RESPONSE_FORMAT 不重试', () => {
     expect(mapHttpStatus(422)).toEqual({ code: 'BAD_RESPONSE_FORMAT', retriable: false });
+    expect(mapHttpStatus(400)).toEqual({ code: 'BAD_RESPONSE_FORMAT', retriable: false });
   });
 });
 

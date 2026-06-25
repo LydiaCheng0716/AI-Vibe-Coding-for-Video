@@ -14,28 +14,45 @@ const ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 
 export function createAnthropicProvider(): LlmProvider {
+  async function postMessages(req: CompleteRequest): Promise<Response> {
+    // 优先用编排层已解密并传入的 Key，避免二次解密（ADR-1 最小作用域）。
+    const apiKey = req.apiKey ?? (await getApiKeyForRequest());
+    if (!apiKey) throw new ProviderCallError('NO_API_KEY', '未配置 API Key。', false);
+    return fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': ANTHROPIC_VERSION,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: req.model.trim(), // 用户填写值，不硬编码（ARCH-MED-001）；去空格
+        max_tokens: req.maxTokens,
+        system: req.system,
+        messages: [{ role: 'user', content: req.user }],
+      }),
+      signal: req.signal,
+    });
+  }
+
   return {
+    async probe(req: CompleteRequest): Promise<void> {
+      // 极小请求只判通断：2xx → resolve；非 2xx/网络异常 → 抛细化码。不读 body。
+      let res: Response;
+      try {
+        res = await postMessages(req);
+      } catch (e) {
+        throw mapFetchError(e);
+      }
+      if (!res.ok) {
+        const { code, retriable } = mapHttpStatus(res.status);
+        throw new ProviderCallError(code, anthropicMessage(code), retriable);
+      }
+    },
     async complete(req: CompleteRequest): Promise<string> {
       let res: Response;
       try {
-        // 优先用编排层已解密并传入的 Key，避免二次解密（ADR-1 最小作用域）。
-        const apiKey = req.apiKey ?? (await getApiKeyForRequest());
-        if (!apiKey) throw new ProviderCallError('NO_API_KEY', '未配置 API Key。', false);
-        res = await fetch(ENDPOINT, {
-          method: 'POST',
-          headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': ANTHROPIC_VERSION,
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: req.model.trim(), // 用户填写值，不硬编码（ARCH-MED-001）；去空格
-            max_tokens: req.maxTokens,
-            system: req.system,
-            messages: [{ role: 'user', content: req.user }],
-          }),
-          signal: req.signal,
-        });
+        res = await postMessages(req);
       } catch (e) {
         throw mapFetchError(e);
       }
@@ -71,7 +88,13 @@ export function createAnthropicProvider(): LlmProvider {
 function anthropicMessage(code: string): string {
   switch (code) {
     case 'AUTH_FAILED':
-      return 'API Key 无效或无权限，请到设置里检查你的 BYOK 配置。';
+      return 'API Key 无效，请到设置里检查你的 BYOK 配置。';
+    case 'FORBIDDEN':
+      return '无权限或被锁定（403），请检查 Key 权限与账号状态。';
+    case 'MODEL_NOT_FOUND':
+      return '模型不存在或无访问权限（404），请检查模型名。';
+    case 'QUOTA_EXCEEDED':
+      return '额度不足或欠费，请检查账户余额。';
     case 'RATE_LIMITED':
       return '请求过于频繁，请稍后再试。';
     case 'NETWORK_ERROR':
