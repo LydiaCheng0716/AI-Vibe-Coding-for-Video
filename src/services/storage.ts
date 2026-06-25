@@ -10,9 +10,11 @@ import {
   type BgmPrompt,
   type Character,
   type Shot,
+  type GlobalStyle,
 } from '../core/models';
 import { defaultSettings } from '../core/defaults';
 import { reinjectCharacterConsistency } from '../core/characters';
+import { reinjectGlobalStyle } from '../core/style';
 
 interface DraftRecord {
   text: string;
@@ -151,6 +153,32 @@ export async function updateCharacter(
     });
     if (!hit) return ok(null);
     const next = reinjectCharacterConsistency({ ...project, characters });
+    const saved = await doSaveProject(next);
+    if (!saved.ok) return saved;
+    return ok(next);
+  });
+}
+
+/**
+ * 调校/锁定全局风格（Issue #55）：合并 globalStyle.profile/suggestions/locked，随后重注入刷新镜头
+ * 风格锚点（锁定/改风格即时反映、剥旧防残留）。返回更新后的 Project 供 UI 同步。
+ * 无项目 → ok(null)。整个 RMW 在锁内串行。
+ */
+export async function updateGlobalStyle(
+  patch: Partial<GlobalStyle>,
+): Promise<Result<Project | null>> {
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return ok(null);
+    const prev: GlobalStyle = project.globalStyle ?? {
+      profile: { colorGrade: '', lighting: '', lensFocal: '', filmTexture: '', mood: '' },
+    };
+    const globalStyle: GlobalStyle = {
+      ...prev,
+      ...patch,
+      profile: { ...prev.profile, ...(patch.profile ?? {}) },
+    };
+    const next = reinjectGlobalStyle({ ...project, globalStyle });
     const saved = await doSaveProject(next);
     if (!saved.ok) return saved;
     return ok(next);

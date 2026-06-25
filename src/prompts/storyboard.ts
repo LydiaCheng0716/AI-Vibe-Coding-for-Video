@@ -9,6 +9,7 @@ import { cinematicEn } from './templates/cinematic-en';
 import { jimengKelingZh } from './templates/jimeng-keling-zh';
 import { clampField } from './sanitize';
 import { characterInstruction } from './characters';
+import { styleInstruction } from './style';
 
 export interface PromptPair {
   system: string;
@@ -28,6 +29,7 @@ function jsonShell(bilingual: boolean): string {
     ? `{ ${SHOT_FIELDS_SHELL}, "prompt": "中文版", "promptEn": "English version", "characterRefs": ["string"] }`
     : `{ ${SHOT_FIELDS_SHELL}, "prompt": "string", "characterRefs": ["string"] }`;
   return `{
+  "globalStyle": { "profile": { "colorGrade": "string", "lighting": "string", "lensFocal": "string", "filmTexture": "string", "mood": "string" }, "suggestions": { "colorGrade": ["string"], "lighting": ["string"] } },
   "characters": [ ${CHARACTER_SHELL} ],
   "shots": [
     ${shotLine}
@@ -70,6 +72,8 @@ export function buildStoryboardPrompt(story: string, params: GenerationParams): 
       ? `- 每个镜头必须包含：summary、shotSize、cameraMovement、durationSuggestion、prompt（中文版）、promptEn（英文版）。`
       : `- 每个镜头必须包含：summary（概要）、shotSize（景别）、cameraMovement（运镜）、durationSuggestion（时长建议）、prompt（完整视频提示词，含正向描述与负面提示词）。`,
     `- summary / shotSize / cameraMovement / durationSuggestion 等可读字段用 ${readableLang} 输出。`,
+    '',
+    styleInstruction(),
     '',
     characterInstruction(),
     '',

@@ -5,6 +5,7 @@ import ShotList from '../components/ShotList';
 import ExportPanel from '../components/ExportPanel';
 import BgmPanel from '../components/BgmPanel';
 import CharacterPanel from '../components/CharacterPanel';
+import StylePanel from '../components/StylePanel';
 import DraftsPanel from '../components/DraftsPanel';
 import type { Project, BgmPrompt, Character, Shot } from '../core/models';
 import { getCurrentProject, getSettings, saveCurrentProject } from '../services/storage';
@@ -106,6 +107,14 @@ export default function App() {
             <DraftsPanel project={project} onOpen={onOpenDraft} />
             {project && (
               <>
+                <StylePanel
+                  globalStyle={project.globalStyle}
+                  story={project.story}
+                  lang={project.params.outputLanguage}
+                  busy={busy}
+                  persistApiKey={persistApiKey}
+                  onProjectUpdated={onProjectUpdated}
+                />
                 <CharacterPanel
                   characters={project.characters}
                   story={project.story}

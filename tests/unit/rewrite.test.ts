@@ -194,3 +194,15 @@ describe('rewriteShot（锁包裹）', () => {
     await held;
   });
 });
+
+describe('rewriteShotAttempt 保持全局风格锚点（Issue #55↔#30/#32）', () => {
+  it('重写后注入锁定的全局风格', async () => {
+    const { deps } = makeDeps();
+    const p = project({
+      globalStyle: { profile: { colorGrade: '暖金', lighting: '', lensFocal: '', filmTexture: '', mood: '' }, locked: true },
+    });
+    const r = await rewriteShotAttempt({ project: p, shotId: 's1', mode: 'regenerate' }, deps);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.prompt).toContain('色调/调色:暖金');
+  });
+})
