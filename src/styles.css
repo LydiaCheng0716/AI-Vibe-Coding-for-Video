@@ -9,14 +9,14 @@
 :root {
   /* 统一浅色控件主题，避免操作系统深色把表单控件染成与白底面板冲突的样式。 */
   color-scheme: light;
-  --sp-accent: #4f46e5; /* indigo-600 */
+  --sp-accent: #c81e2a; /* 品牌红（FireUG 点缀色）；拿到精确红值改这里 */
 }
 
 body {
   margin: 0;
   min-width: 320px;
   background-color: #ffffff;
-  color: #0f172a; /* slate-900 */
+  color: #171717; /* neutral-900 近黑 */
   font-family:
     Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
