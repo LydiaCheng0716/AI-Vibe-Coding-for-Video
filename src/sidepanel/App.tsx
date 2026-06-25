@@ -5,14 +5,16 @@ import ShotList from '../components/ShotList';
 import ExportPanel from '../components/ExportPanel';
 import BgmPanel from '../components/BgmPanel';
 import CharacterPanel from '../components/CharacterPanel';
-import type { Project, BgmPrompt, Character } from '../core/models';
-import { getCurrentProject } from '../services/storage';
+import type { Project, BgmPrompt, Character, Shot } from '../core/models';
+import { getCurrentProject, getSettings } from '../services/storage';
 import { subscribeLlmBusy } from '../services/llmLock';
 
 export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [busy, setBusy] = useState(false);
+  // 读一次「是否保存 Key」下传给各镜头卡（避免每卡各读一次 storage）。
+  const [persistApiKey, setPersistApiKey] = useState(true);
 
   // 侧边栏重开时恢复上次分镜结果；订阅全局加载态（TASK-009）。
   useEffect(() => {
@@ -31,17 +33,27 @@ export default function App() {
     };
   }, []);
 
-  // 单镜头保存后更新内存态，仅改该镜头并置 editedByUser（与 storage 一致）。
-  function onShotSaved(shotId: string, prompt: string) {
+  // 在「返回主界面」时刷新「是否保存 Key」：用户可能刚在设置里改了该开关并清了 Key
+  // （Codex P2：仅 mount 读会导致开关变更后单镜头重写恒 NO_API_KEY）。初次挂载也会跑（showSettings=false）。
+  useEffect(() => {
+    if (showSettings) return;
+    let alive = true;
+    getSettings()
+      .then((s) => {
+        if (alive) setPersistApiKey(s.persistApiKey);
+      })
+      .catch(() => {
+        /* 读取失败按默认保存模式 */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [showSettings]);
+
+  // 单镜头变更（手动保存 / 重写 / 撤销）后整条替换该镜头（storage 已落库）。
+  function onShotChanged(shot: Shot) {
     setProject((prev) =>
-      prev
-        ? {
-            ...prev,
-            shots: prev.shots.map((s) =>
-              s.id === shotId ? { ...s, prompt, editedByUser: true } : s,
-            ),
-          }
-        : prev,
+      prev ? { ...prev, shots: prev.shots.map((s) => (s.id === shot.id ? shot : s)) } : prev,
     );
   }
 
@@ -91,7 +103,12 @@ export default function App() {
                   onProjectUpdated={onProjectUpdated}
                   onCharacterAdded={onCharacterAdded}
                 />
-                <ShotList shots={project.shots} onShotSaved={onShotSaved} />
+                <ShotList
+                  project={project}
+                  busy={busy}
+                  persistApiKey={persistApiKey}
+                  onShotChanged={onShotChanged}
+                />
                 <BgmPanel project={project} busy={busy} onBgmGenerated={onBgmGenerated} />
                 <ExportPanel project={project} />
               </>

@@ -9,6 +9,7 @@ import {
   type Project,
   type BgmPrompt,
   type Character,
+  type Shot,
 } from '../core/models';
 import { defaultSettings } from '../core/defaults';
 import { reinjectCharacterConsistency } from '../core/characters';
@@ -171,6 +172,25 @@ export async function addCharacter(input: Omit<Character, 'id'>): Promise<Result
     });
     if (!saved.ok) return saved;
     return ok(character);
+  });
+}
+
+/**
+ * 整条替换某镜头（Issue #30/#32 单镜头重写落库）：projectLock 内 RMW，按 id 替换，
+ * **保留原 id/index**，其余镜头不变。无项目/无匹配 → ok 无副作用。
+ */
+export async function replaceShot(shotId: string, shot: Shot): Promise<Result<void>> {
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return ok(undefined);
+    let hit = false;
+    const shots = project.shots.map((s) => {
+      if (s.id !== shotId) return s;
+      hit = true;
+      return { ...shot, id: s.id, index: s.index };
+    });
+    if (!hit) return ok(undefined);
+    return doSaveProject({ ...project, shots });
   });
 }
 

@@ -269,6 +269,28 @@ export function parseFieldSuggestions(raw: string): string[] | null {
   return cleaned.length > 0 ? cleaned : null;
 }
 
+/**
+ * 解析单镜头重写响应（Issue #30/#32）：复用 SHOT_FIELDS 校验，返回 5 个可读字段或 null
+ * （→ BAD_RESPONSE_FORMAT）。不含 id/index/characterRefs（由编排层保留原值）。
+ */
+export function parseShotRewrite(
+  raw: string,
+): Pick<Shot, 'summary' | 'shotSize' | 'cameraMovement' | 'durationSuggestion' | 'prompt'> | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const obj = tryParseObject(raw);
+  if (!isObj(obj)) return null;
+  for (const f of SHOT_FIELDS) {
+    if (!nonEmptyStr(obj[f])) return null;
+  }
+  return {
+    summary: (obj.summary as string).trim(),
+    shotSize: (obj.shotSize as string).trim(),
+    cameraMovement: (obj.cameraMovement as string).trim(),
+    durationSuggestion: (obj.durationSuggestion as string).trim(),
+    prompt: (obj.prompt as string).trim(),
+  };
+}
+
 /** 把解析结果组装成完整 Project（供 generation.ts 落库）。 */
 export function buildProject(
   story: string,
