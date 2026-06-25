@@ -29,7 +29,7 @@
 
 ## 0. 本规范的范围（先读这一节）
 
-StoryBoard AI 是 **纯客户端、用户自带 Key、无账号** 的 Chrome 侧边栏插件，**没有自建后端、没有自建 REST API**。因此本规范描述的是两类契约：
+StoryPop 是 **纯客户端、用户自带 Key、无账号** 的 Chrome 侧边栏插件，**没有自建后端、没有自建 REST API**。因此本规范描述的是两类契约：
 
 1. **插件内部服务契约（Service API）** —— 组件层调用服务层的函数签名与数据形状，开发者据此实现 `services/` 与 `core/`。这是「API 优先」在本产品里的落地形态。
 2. **出站 LLM 调用契约（Outbound Provider Contract）** —— 浏览器用 **用户自己的 API Key** 直连第三方 LLM 厂商的请求/响应形状。

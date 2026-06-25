@@ -72,7 +72,7 @@ function shotMd(s: Shot, lang: ExportPromptLang): string {
 }
 
 function toMarkdown(p: Project, lang: ExportPromptLang): string {
-  const parts: string[] = ['# StoryBoard AI 分镜', '', '## 故事', '', p.story, ''];
+  const parts: string[] = ['# StoryPop 分镜', '', '## 故事', '', p.story, ''];
   if (p.characters.length > 0) {
     parts.push('## 角色一致性', '');
     p.characters.forEach((c, i) => parts.push(`- **${charLabel(c, i)}**：${c.appearance}`));
@@ -98,7 +98,7 @@ function shotText(s: Shot, lang: ExportPromptLang): string {
 }
 
 function toPlaintext(p: Project, lang: ExportPromptLang): string {
-  const parts: string[] = ['StoryBoard AI 分镜', '', '故事：', p.story, ''];
+  const parts: string[] = ['StoryPop 分镜', '', '故事：', p.story, ''];
   if (p.characters.length > 0) {
     parts.push('角色一致性：');
     p.characters.forEach((c, i) => parts.push(`- ${charLabel(c, i)}：${c.appearance}`));

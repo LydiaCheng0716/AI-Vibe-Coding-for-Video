@@ -172,7 +172,7 @@ PO 通过 **PO Assistant** 接收所有来自技术 Agent 的信息，不直接�
 | 项目 | 内容 |
 |------|------|
 | 提示词文件 | `.agents/deploy.md` |
-| 职责 | CI/CD 配置 · GitHub Actions · 产物打包（StoryBoard AI 为 Chrome 扩展 `.zip`，无云端服务部署）|
+| 职责 | CI/CD 配置 · GitHub Actions · 产物打包（StoryPop 为 Chrome 扩展 `.zip`，无云端服务部署）|
 | 输出 | CI 配置 · 部署/发布报告 · Release Notes |
 | 不做的事 | 写业务功能 · 做需求决策 |
 

@@ -32,7 +32,7 @@
 
 ## 0. 产品定位与核心约束（先读这一节）
 
-StoryBoard AI 是一个 **纯客户端的 Chrome 侧边栏插件**（Manifest V3 Side Panel），把口语化故事转成结构化分镜、视频提示词和 BGM 提示词。
+StoryPop 是一个 **纯客户端的 Chrome 侧边栏插件**（Manifest V3 Side Panel），把口语化故事转成结构化分镜、视频提示词和 BGM 提示词。
 
 它和传统 Web 应用最大的不同：
 
@@ -168,10 +168,10 @@ storyboard-ai/
 ```jsonc
 {
   "manifest_version": 3,
-  "name": "StoryBoard AI",
+  "name": "StoryPop",
   "version": "0.1.0",
   "side_panel": { "default_path": "src/sidepanel/index.html" },
-  "action": { "default_title": "StoryBoard AI" },   // 点击图标打开侧边栏
+  "action": { "default_title": "StoryPop" },   // 点击图标打开侧边栏
   "permissions": [
     "sidePanel",     // chrome.sidePanel
     "storage"        // chrome.storage.local（设置/草稿/项目）
