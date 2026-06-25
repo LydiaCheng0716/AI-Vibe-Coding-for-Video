@@ -3,6 +3,7 @@ import { validateStory, storyValidationMessage } from '../core/validate';
 import { STORY_MAX, DRAFT_DEBOUNCE_MS } from '../core/config';
 import { saveDraft, getDraft, getSettings } from '../services/storage';
 import { generateStoryboard } from '../services/generation';
+import { estimateTokens, estimateProjectTokens, longStoryWarning } from '../core/tokens';
 import type { Project } from '../core/models';
 
 interface Props {
@@ -107,7 +108,9 @@ export default function StoryInput({ onGenerated, busy }: Props) {
         },
       );
       if (r.ok) {
-        setNotice(null);
+        // Issue #36：生成后显示本次大致 token 用量（仅供参考）。
+        const { input, output } = estimateProjectTokens(text, r.data);
+        setNotice(`生成完成（约 输入 ~${input} / 输出 ~${output} tokens，仅供参考）`);
         onGenerated(r.data);
       } else {
         // 含 NO_API_KEY / 配置错误 / 网络等可读提示（TASK-003/009）。
@@ -138,6 +141,15 @@ export default function StoryInput({ onGenerated, busy }: Props) {
           <span className={isError ? 'text-red-600' : 'text-amber-600'}>{liveMessage}</span>
         )}
       </div>
+      {/* Issue #36：估算输入 token + 超长截断/分批提示（仅供参考） */}
+      {text.trim() && (
+        <div className="text-[11px] text-gray-500">
+          约 {estimateTokens(text)} input tokens（仅供参考）
+          {longStoryWarning(text) && (
+            <span className="ml-1 text-amber-600">{longStoryWarning(text)}</span>
+          )}
+        </div>
+      )}
       {!persistKey && (
         <input
           type="password"
