@@ -35,6 +35,10 @@ export const STORAGE_KEYS = {
   apiKeyCipher: 'apiKeyCipher',
   draft: 'draft',
   currentProject: 'currentProject',
+  /** 角色库（Issue #40，本地集合抽象）。 */
+  characterLibrary: 'characterLibrary',
+  /** 历史/草稿库（Issue #35，与角色库共用集合抽象）。 */
+  projectDrafts: 'projectDrafts',
 } as const;
 
 /** BYOK 密钥的 IndexedDB 库/仓名（ADR-1）。 */

@@ -4,6 +4,13 @@ import { CHARACTER_FIELD_KEYS, CHARACTER_FIELD_LABELS, emptyProfile } from '../c
 import { updateCharacter, addCharacter, getSettings } from '../services/storage';
 import { suggestCharacterField } from '../services/characterSuggest';
 import { copyToClipboard } from '../services/clipboard';
+import CharacterLibrary from './CharacterLibrary';
+import {
+  saveCharacterToLibrary,
+  CHARACTER_CATEGORIES,
+  CHARACTER_CATEGORY_LABELS,
+  type CharacterCategory,
+} from '../services/characterLibrary';
 
 interface Props {
   characters: Character[];
@@ -35,6 +42,10 @@ export default function CharacterPanel({
   // 不保存 Key 模式（ADR-1 #8）：persist=false 时「重新建议」需一次性 Key（不落盘），与生成区一致。
   const [persistKey, setPersistKey] = useState(true);
   const [tempKey, setTempKey] = useState('');
+  // Issue #40：角色固定可选/可跳过——可收起整个角色区直达分镜。
+  const [collapsed, setCollapsed] = useState(false);
+  // 角色库刷新信号：卡片「存入角色库」后 +1，触发库列表重载。
+  const [libRefresh, setLibRefresh] = useState(0);
 
   useEffect(() => {
     let on = true;
@@ -59,41 +70,68 @@ export default function CharacterPanel({
     else setNotice(r.error.message);
   }
 
+  // 角色库「用此角色」→ 注入当前项目。
+  async function onUseFromLibrary(character: Omit<Character, 'id'>) {
+    setNotice(null);
+    const r = await addCharacter(character);
+    if (r.ok) onCharacterAdded(r.data);
+    else setNotice(r.error.message);
+  }
+
   return (
     <section className="flex flex-col gap-3 p-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">角色（{characters.length}）</h2>
-        <button
-          type="button"
-          onClick={onAdd}
-          disabled={adding}
-          className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
-        >
-          {adding ? '新增中…' : '+ 新增角色'}
-        </button>
+        <h2 className="text-sm font-semibold">角色（{characters.length}，可选，可跳过）</h2>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+          >
+            {collapsed ? '展开' : '收起'}
+          </button>
+          {!collapsed && (
+            <button
+              type="button"
+              onClick={onAdd}
+              disabled={adding}
+              className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+            >
+              {adding ? '新增中…' : '+ 新增角色'}
+            </button>
+          )}
+        </div>
       </div>
       {notice && <p className="text-xs text-red-600">{notice}</p>}
-      {!persistKey && (
-        <input
-          type="password"
-          autoComplete="off"
-          className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-          placeholder="一次性 API Key（已关闭保存，仅用于「重新建议」，不落盘）"
-          value={tempKey}
-          onChange={(e) => setTempKey(e.target.value)}
-        />
+      {collapsed ? (
+        <p className="text-[11px] text-gray-400">角色固定是可选的，已收起；展开可调校角色或从角色库复用。</p>
+      ) : (
+        <>
+          {!persistKey && (
+            <input
+              type="password"
+              autoComplete="off"
+              className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
+              placeholder="一次性 API Key（已关闭保存，仅用于「重新建议」，不落盘）"
+              value={tempKey}
+              onChange={(e) => setTempKey(e.target.value)}
+            />
+          )}
+          {characters.map((c) => (
+            <CharacterCard
+              key={c.id}
+              character={c}
+              story={story}
+              lang={lang}
+              busy={busy}
+              apiKey={persistKey ? undefined : tempKey.trim() || undefined}
+              onProjectUpdated={onProjectUpdated}
+              onSavedToLibrary={() => setLibRefresh((n) => n + 1)}
+            />
+          ))}
+          <CharacterLibrary refreshKey={libRefresh} onUse={onUseFromLibrary} />
+        </>
       )}
-      {characters.map((c) => (
-        <CharacterCard
-          key={c.id}
-          character={c}
-          story={story}
-          lang={lang}
-          busy={busy}
-          apiKey={persistKey ? undefined : tempKey.trim() || undefined}
-          onProjectUpdated={onProjectUpdated}
-        />
-      ))}
     </section>
   );
 }
@@ -106,15 +144,40 @@ interface CardProps {
   /** 不保存 Key 模式的一次性 Key（透传给「重新建议」服务，不落盘）。 */
   apiKey?: string;
   onProjectUpdated: (project: Project) => void;
+  /** 存入角色库后通知面板刷新库列表。 */
+  onSavedToLibrary: () => void;
 }
 
-function CharacterCard({ character, story, lang, busy, apiKey, onProjectUpdated }: CardProps) {
+function CharacterCard({
+  character,
+  story,
+  lang,
+  busy,
+  apiKey,
+  onProjectUpdated,
+  onSavedToLibrary,
+}: CardProps) {
   const labels = CHARACTER_FIELD_LABELS[lang] ?? CHARACTER_FIELD_LABELS.zh;
   const locked = !!character.locked;
   // 档案草稿（本地编辑态）：从 props 播种一次（卡片以 id 为 key，角色切换即重挂载）。
   const [profile, setProfile] = useState<CharacterProfile>(character.profile ?? emptyProfile());
   const [resuggesting, setResuggesting] = useState<CharacterFieldKey | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Issue #40：存入角色库的分类。
+  const [category, setCategory] = useState<CharacterCategory>('person');
+
+  async function onSaveToLibrary() {
+    const r = await saveCharacterToLibrary(
+      { name: character.name, appearance: character.appearance, profile, seedPhrase: character.seedPhrase },
+      category,
+    );
+    if (r.ok) {
+      setNotice('已存入角色库');
+      onSavedToLibrary();
+    } else {
+      setNotice(r.error.message);
+    }
+  }
 
   async function persist(patch: Partial<Character>) {
     const r = await updateCharacter(character.id, patch);
@@ -236,6 +299,28 @@ function CharacterCard({ character, story, lang, busy, apiKey, onProjectUpdated 
           </button>
         </div>
       )}
+      {/* Issue #40：存入角色库（带分类）以便跨分镜复用 */}
+      <div className="mt-2 flex items-center gap-2 border-t border-gray-100 pt-2">
+        <span className="text-[11px] text-gray-500">分类</span>
+        <select
+          className="rounded border border-gray-300 p-0.5 text-[11px]"
+          value={category}
+          onChange={(e) => setCategory(e.target.value as CharacterCategory)}
+        >
+          {CHARACTER_CATEGORIES.map((cat) => (
+            <option key={cat} value={cat}>
+              {CHARACTER_CATEGORY_LABELS[cat]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={onSaveToLibrary}
+          className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50"
+        >
+          存入角色库
+        </button>
+      </div>
       {notice && <p className="mt-1 text-[11px] text-gray-600">{notice}</p>}
     </div>
   );
