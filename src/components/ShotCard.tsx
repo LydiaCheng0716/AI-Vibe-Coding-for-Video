@@ -19,9 +19,11 @@ interface Props {
   persistApiKey: boolean;
   /** 镜头变更（手动保存 / 重写 / 撤销）后通知父级更新内存态。 */
   onShotChanged: (shot: Shot) => void;
+  /** 删除本镜头（Issue #56；确认由父级处理）。 */
+  onDelete?: () => void;
 }
 
-export default function ShotCard({ shot, project, busy, persistApiKey, onShotChanged }: Props) {
+export default function ShotCard({ shot, project, busy, persistApiKey, onShotChanged, onDelete }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(shot.prompt);
   const [draftEn, setDraftEn] = useState(shot.promptEn ?? ''); // 双语英文版编辑草稿（Issue #41）
@@ -184,6 +186,11 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
           {!editing && (
             <button type="button" onClick={onEdit} className="text-xs text-blue-600 hover:underline">
               编辑
+            </button>
+          )}
+          {onDelete && (
+            <button type="button" onClick={onDelete} className="text-xs text-red-600 hover:underline">
+              删除
             </button>
           )}
         </div>

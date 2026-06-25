@@ -272,3 +272,16 @@ describe('storage: 角色编辑保持全局风格锚点（Codex P2 #55）', () =
     expect(after?.shots[0].prompt).toContain('金色短发'); // 角色锚点也在
   });
 })
+
+describe('storage: setShots（Issue #56）', () => {
+  it('整组替换并保存；无项目 → ok(null)', async () => {
+    const { setShots } = await import('../../src/services/storage');
+    expect(await setShots([mkShot('s1', 1)])).toMatchObject({ ok: true, data: null });
+    await saveCurrentProject(mkProject());
+    const newShots = [mkShot('s2', 1), mkShot('s1', 2)]; // 调换顺序
+    const r = await setShots(newShots);
+    expect(r.ok).toBe(true);
+    const p = await getCurrentProject();
+    expect(p?.shots.map((s) => s.id)).toEqual(['s2', 's1']);
+  });
+})
