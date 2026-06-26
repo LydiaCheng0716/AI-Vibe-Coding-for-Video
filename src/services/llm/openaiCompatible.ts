@@ -77,7 +77,8 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
   }
 
   return {
-    lastUsage: () => lastUsage,
+    // 返回防御性拷贝，避免调用方意外改写适配器内部缓存（Kimi P2）。
+    lastUsage: () => (lastUsage ? { ...lastUsage } : null),
     async probe(req: CompleteRequest): Promise<void> {
       // 极小请求只判通断：不带 response_format（最大兼容），不读 body、不查截断。
       let res: Response;

@@ -19,8 +19,8 @@ export interface CompleteRequest {
 }
 
 export interface LlmUsage {
-  input: number;
-  output: number;
+  readonly input: number;
+  readonly output: number;
 }
 
 export interface LlmProvider {

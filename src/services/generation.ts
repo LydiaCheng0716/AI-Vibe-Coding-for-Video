@@ -239,6 +239,7 @@ export async function generateStoryboardAttemptWithUsage(
   // 人物一致性注入（TASK-005）：把引用角色的统一外观注入对应镜头 prompt。
   // 人物一致性 + 全局风格（Issue #55）注入：把锁定角色/风格锚点注入各镜头 prompt。
   const project = injectGlobalStyle(injectCharacterConsistency(buildProject(input.story, params, parsed)));
+  // 每次尝试各自 new 一个 provider，故此处的 lastUsage 必来自当前成功尝试（Kimi P2）。
   const usage = llmProvider.lastUsage?.() ?? undefined;
   return ok({ project, ...(usage ? { usage } : {}) });
 }
