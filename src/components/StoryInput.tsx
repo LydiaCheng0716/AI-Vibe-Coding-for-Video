@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { validateStory, storyValidationMessage } from '../core/validate';
 import { STORY_MAX, DRAFT_DEBOUNCE_MS } from '../core/config';
 import { saveDraft, getDraft } from '../services/storage';
-import { generateStoryboardForStore } from '../services/generation';
+import { generateStoryboardForStoreWithUsage } from '../services/generation';
 import { estimateTokens, estimateProjectTokens, longStoryWarning } from '../core/tokens';
 import type { Project, Result } from '../core/models';
 import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
@@ -83,7 +83,7 @@ export default function StoryInput({ onGenerated, busy }: Props) {
     setNotice('正在生成分镜…');
     try {
       // Issue #33：上报进度阶段（请求/重试/保存），避免长故事被误判为卡死。
-      const r = await generateStoryboardForStore(
+      const r = await generateStoryboardForStoreWithUsage(
         { story: text, ...(oneTimeKey.apiKey ? { apiKey: oneTimeKey.apiKey } : {}) },
         undefined,
         (p) => {
@@ -91,11 +91,15 @@ export default function StoryInput({ onGenerated, busy }: Props) {
         },
       );
       if (r.ok) {
-        // Issue #36：生成后显示本次大致 token 用量（仅供参考）。
-        const { input, output } = estimateProjectTokens(text, r.data);
-        const saved = await onGenerated(r.data);
+        const { project, usage } = r.data;
+        const saved = await onGenerated(project);
         if (saved.ok) {
-          setNotice(`生成完成（约 输入 ~${input} / 输出 ~${output} tokens，仅供参考）`);
+          if (usage) {
+            setNotice(`生成完成（输入 ${usage.input} / 输出 ${usage.output} tokens）`);
+          } else {
+            const { input, output } = estimateProjectTokens(text, project);
+            setNotice(`生成完成（估算 输入 ~${input} / 输出 ~${output} tokens，仅供参考）`);
+          }
         } else {
           setNotice(saved.error.message);
         }

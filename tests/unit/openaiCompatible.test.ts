@@ -59,6 +59,26 @@ describe('openaiCompatible: 请求形状', () => {
     expect(out).toBe('{"shots":[1]}');
   });
 
+  it('解析 usage.prompt_tokens / completion_tokens，但 complete 仍只返回文本', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        choices: [{ message: { content: '{"shots":[1]}' } }],
+        usage: { prompt_tokens: 123, completion_tokens: 45 },
+      }),
+    );
+    const provider = createOpenAiCompatibleProvider();
+    const out = await provider.complete(req);
+    expect(out).toBe('{"shots":[1]}');
+    expect(provider.lastUsage?.()).toEqual({ input: 123, output: 45 });
+  });
+
+  it('缺失 usage 时 lastUsage 为 null', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(okCompletion('{"shots":[1]}'));
+    const provider = createOpenAiCompatibleProvider();
+    await provider.complete(req);
+    expect(provider.lastUsage?.()).toBeNull();
+  });
+
   it('finish_reason=length（截断）→ BAD_RESPONSE_FORMAT（ADR-6(4)）', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ choices: [{ message: { content: '{' }, finish_reason: 'length' }] }), {
