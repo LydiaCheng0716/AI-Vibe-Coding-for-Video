@@ -7,13 +7,33 @@ import {
   mapFetchError,
   mapHttpStatus,
   type CompleteRequest,
+  type LlmUsage,
   type LlmProvider,
 } from './provider';
 
 const ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 
+function parseUsage(json: unknown): LlmUsage | null {
+  const usage = (json as { usage?: { input_tokens?: unknown; output_tokens?: unknown } })?.usage;
+  const input = usage?.input_tokens;
+  const output = usage?.output_tokens;
+  if (
+    typeof input === 'number' &&
+    Number.isFinite(input) &&
+    input >= 0 &&
+    typeof output === 'number' &&
+    Number.isFinite(output) &&
+    output >= 0
+  ) {
+    return { input, output };
+  }
+  return null;
+}
+
 export function createAnthropicProvider(): LlmProvider {
+  let lastUsage: LlmUsage | null = null;
+
   async function postMessages(req: CompleteRequest): Promise<Response> {
     // 优先用编排层已解密并传入的 Key，避免二次解密（ADR-1 最小作用域）。
     const apiKey = req.apiKey ?? (await getApiKeyForRequest());
@@ -36,6 +56,8 @@ export function createAnthropicProvider(): LlmProvider {
   }
 
   return {
+    // 返回防御性拷贝，避免调用方意外改写适配器内部缓存（Kimi P2）。
+    lastUsage: () => (lastUsage ? { ...lastUsage } : null),
     async probe(req: CompleteRequest): Promise<void> {
       // 极小请求只判通断：2xx → resolve；非 2xx/网络异常 → 抛细化码。不读 body。
       let res: Response;
@@ -50,6 +72,7 @@ export function createAnthropicProvider(): LlmProvider {
       }
     },
     async complete(req: CompleteRequest): Promise<string> {
+      lastUsage = null;
       let res: Response;
       try {
         res = await postMessages(req);
@@ -80,6 +103,7 @@ export function createAnthropicProvider(): LlmProvider {
       if (typeof text !== 'string') {
         throw new ProviderCallError('BAD_RESPONSE_FORMAT', '生成结果格式异常，请重试。', false);
       }
+      lastUsage = parseUsage(json);
       return text;
     },
   };

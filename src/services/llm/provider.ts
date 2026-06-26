@@ -18,9 +18,16 @@ export interface CompleteRequest {
   apiKey?: string;
 }
 
+export interface LlmUsage {
+  readonly input: number;
+  readonly output: number;
+}
+
 export interface LlmProvider {
   /** 发起一次「要求结构化 JSON 输出」的补全；返回原始文本（内含 JSON），由 core/parse 解析。 */
   complete(req: CompleteRequest): Promise<string>;
+  /** 最近一次成功 complete 的 provider token 用量；provider 未返回 usage 或失败时为 null。 */
+  lastUsage?(): LlmUsage | null;
   /**
    * 连接探针（Issue #28）：发一个极小请求，**仅判 HTTP 通断**，2xx → resolve，
    * 非 2xx/网络异常 → 抛细化后的 ProviderCallError。不读 body、不查截断

@@ -24,7 +24,7 @@ import { injectGlobalStyle, injectStyleIntoShot } from '../core/style';
 import { buildShotRewritePrompt, pickOverride, type RewriteMode } from '../prompts/rewrite';
 import type { BgmPrompt, Character, GlobalStyle, OutputLanguage, Shot, Transition } from '../core/models';
 import { CHARACTER_SUGGEST_TIMEOUT_MS, CHARACTER_SUGGEST_MAX_TOKENS } from '../core/config';
-import { ProviderCallError, createProvider, type LlmProvider } from './llm/provider';
+import { ProviderCallError, createProvider, type LlmProvider, type LlmUsage } from './llm/provider';
 import { hasHostPermission, originForProvider } from './permissions';
 import { getSettings, saveCurrentProject } from './storage';
 import { hasApiKey, getApiKeyForRequest } from './keyVault';
@@ -188,10 +188,23 @@ export async function runOneShotLlm<T>(opts: RunOneShotLlmOptions<T>): Promise<R
  * 这是给 TASK-009 包裹（全局锁 + 失败退避重试）的最小单元——重试只会重发 LLM 调用，
  * 不会重复执行 saveCurrentProject。前置校验任一失败立即返回，不发出站请求（api-spec §3.3）。
  */
+export interface StoryboardGenerationResult {
+  project: Project;
+  usage?: LlmUsage;
+}
+
 export async function generateStoryboardAttempt(
   input: { story: string; params?: Settings['params']; apiKey?: string },
   deps: GenerationDeps = realDeps,
 ): Promise<Result<Project>> {
+  const r = await generateStoryboardAttemptWithUsage(input, deps);
+  return r.ok ? ok(r.data.project) : r;
+}
+
+export async function generateStoryboardAttemptWithUsage(
+  input: { story: string; params?: Settings['params']; apiKey?: string },
+  deps: GenerationDeps = realDeps,
+): Promise<Result<StoryboardGenerationResult>> {
   // 故事非空 / 长度边界（ADR-2，trim 后码点数）
   const sv = validateStory(input.story);
   if (sv.code === 'EMPTY_STORY') return err('EMPTY_STORY', '请先输入故事内容。');
@@ -208,9 +221,10 @@ export async function generateStoryboardAttempt(
   // 构造 prompt 并发起单次调用
   const { system, user } = buildStoryboardPrompt(input.story, params);
   let raw: string;
+  const llmProvider = deps.createProvider(provider);
   try {
     raw = await callWithTimeout(
-      deps.createProvider(provider),
+      llmProvider,
       { system, user, model: provider.model, apiKey },
       STORYBOARD_TIMEOUT_MS,
     );
@@ -225,7 +239,9 @@ export async function generateStoryboardAttempt(
   // 人物一致性注入（TASK-005）：把引用角色的统一外观注入对应镜头 prompt。
   // 人物一致性 + 全局风格（Issue #55）注入：把锁定角色/风格锚点注入各镜头 prompt。
   const project = injectGlobalStyle(injectCharacterConsistency(buildProject(input.story, params, parsed)));
-  return ok(project);
+  // 每次尝试各自 new 一个 provider，故此处的 lastUsage 必来自当前成功尝试（Kimi P2）。
+  const usage = llmProvider.lastUsage?.() ?? undefined;
+  return ok({ project, ...(usage ? { usage } : {}) });
 }
 
 /** 生成进度阶段（Issue #33）。 */
@@ -236,6 +252,8 @@ export interface GenerationProgress {
   attempt?: number;
   maxAttempts?: number;
   message: string;
+  /** done 阶段携带真实 provider token 用量；provider 未返回 usage 时不存在。 */
+  usage?: LlmUsage;
 }
 
 /**
@@ -252,9 +270,19 @@ export async function generateStoryboard(
   retryOpts: RetryOptions = {},
   onProgress?: (p: GenerationProgress) => void,
 ): Promise<Result<Project>> {
+  const r = await generateStoryboardWithUsage(input, deps, retryOpts, onProgress);
+  return r.ok ? ok(r.data.project) : r;
+}
+
+export async function generateStoryboardWithUsage(
+  input: { story: string; params?: Settings['params']; apiKey?: string },
+  deps: GenerationDeps = realDeps,
+  retryOpts: RetryOptions = {},
+  onProgress?: (p: GenerationProgress) => void,
+): Promise<Result<StoryboardGenerationResult>> {
   const report = onProgress ?? (() => {});
   return withLlmLock(async () => {
-    const attempt = await withRetry(() => generateStoryboardAttempt(input, deps), {
+    const attempt = await withRetry(() => generateStoryboardAttemptWithUsage(input, deps), {
       ...retryOpts,
       onAttempt: (n, max) =>
         report({
@@ -269,12 +297,12 @@ export async function generateStoryboard(
       return attempt;
     }
     report({ phase: 'saving', message: '正在保存分镜…' });
-    const saved = await deps.saveCurrentProject(attempt.data);
+    const saved = await deps.saveCurrentProject(attempt.data.project);
     if (!saved.ok) {
       report({ phase: 'error', message: saved.error.message });
       return saved;
     }
-    report({ phase: 'done', message: '分镜生成完成' });
+    report({ phase: 'done', message: '分镜生成完成', ...(attempt.data.usage ? { usage: attempt.data.usage } : {}) });
     return ok(attempt.data);
   });
 }
@@ -285,7 +313,17 @@ export function generateStoryboardForStore(
   retryOpts: RetryOptions = {},
   onProgress?: (p: GenerationProgress) => void,
 ): Promise<Result<Project>> {
-  return generateStoryboard(
+  return generateStoryboardForStoreWithUsage(input, retryOpts, onProgress).then((r) =>
+    r.ok ? ok(r.data.project) : r,
+  );
+}
+
+export function generateStoryboardForStoreWithUsage(
+  input: { story: string; params?: Settings['params']; apiKey?: string },
+  retryOpts: RetryOptions = {},
+  onProgress?: (p: GenerationProgress) => void,
+): Promise<Result<StoryboardGenerationResult>> {
+  return generateStoryboardWithUsage(
     input,
     { ...realDeps, saveCurrentProject: async () => ok(undefined) },
     retryOpts,

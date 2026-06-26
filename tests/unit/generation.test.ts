@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   generateStoryboard,
+  generateStoryboardWithUsage,
   generateStoryboardAttempt,
   type GenerationDeps,
 } from '../../src/services/generation';
@@ -110,6 +111,30 @@ describe('generateStoryboard: 成功与出站失败', () => {
       expect(r.data.story).toBe(STORY);
     }
     expect(save).toHaveBeenCalledOnce();
+  });
+
+  it('generateStoryboardWithUsage 透传 provider usage，并在 done 进度携带 usage', async () => {
+    const provider = {
+      complete: vi.fn().mockResolvedValue(goodShots()),
+      probe: vi.fn(),
+      lastUsage: vi.fn().mockReturnValue({ input: 321, output: 76 }),
+    };
+    const progress: Array<{ phase: string; usage?: { input: number; output: number } }> = [];
+    const r = await generateStoryboardWithUsage(
+      { story: STORY },
+      makeDeps({ createProvider: vi.fn().mockReturnValue(provider) }),
+      {},
+      (p) => progress.push(p),
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.data.project.shots).toHaveLength(3);
+      expect(r.data.usage).toEqual({ input: 321, output: 76 });
+    }
+    expect(progress[progress.length - 1]).toMatchObject({
+      phase: 'done',
+      usage: { input: 321, output: 76 },
+    });
   });
 
   it('401 → AUTH_FAILED（不重试）', async () => {

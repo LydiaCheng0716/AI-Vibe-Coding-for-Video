@@ -1,5 +1,5 @@
-// Token 估算与成本提示（Issue #36）。纯函数、集中维护。粗略量级、仅供参考（非精确计费）：
-// provider 当前不回传 usage，故用启发式；将来接真实 usage 只需替换本文件实现。
+// Token 估算与成本提示（Issue #36/#68）。纯函数、集中维护。
+// provider 未返回真实 usage 时回退启发式估算；粗略量级、仅供参考（非精确计费）。
 import type { Project } from './models';
 
 // 中日韩统一表意文字 + 假名（CJK 约 1 token/字）。

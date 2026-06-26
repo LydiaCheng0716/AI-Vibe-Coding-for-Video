@@ -7,6 +7,7 @@ import {
   mapFetchError,
   mapHttpStatus,
   type CompleteRequest,
+  type LlmUsage,
   type LlmProvider,
 } from './provider';
 
@@ -38,8 +39,26 @@ function buildBody(req: CompleteRequest, withResponseFormat: boolean): Record<st
   return body;
 }
 
+function parseUsage(json: unknown): LlmUsage | null {
+  const usage = (json as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } })?.usage;
+  const input = usage?.prompt_tokens;
+  const output = usage?.completion_tokens;
+  if (
+    typeof input === 'number' &&
+    Number.isFinite(input) &&
+    input >= 0 &&
+    typeof output === 'number' &&
+    Number.isFinite(output) &&
+    output >= 0
+  ) {
+    return { input, output };
+  }
+  return null;
+}
+
 export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
   const url = endpoint(baseUrl);
+  let lastUsage: LlmUsage | null = null;
 
   async function post(req: CompleteRequest, withResponseFormat: boolean): Promise<Response> {
     // 明文 Key 只在本次请求构造的瞬间存在，不赋值给任何持久引用（ADR-1）。
@@ -58,6 +77,8 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
   }
 
   return {
+    // 返回防御性拷贝，避免调用方意外改写适配器内部缓存（Kimi P2）。
+    lastUsage: () => (lastUsage ? { ...lastUsage } : null),
     async probe(req: CompleteRequest): Promise<void> {
       // 极小请求只判通断：不带 response_format（最大兼容），不读 body、不查截断。
       let res: Response;
@@ -73,6 +94,7 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
       }
     },
     async complete(req: CompleteRequest): Promise<string> {
+      lastUsage = null;
       let res: Response;
       try {
         res = await post(req, true);
@@ -114,6 +136,7 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
       if (typeof content !== 'string') {
         throw new ProviderCallError('BAD_RESPONSE_FORMAT', '生成结果格式异常，请重试。', false);
       }
+      lastUsage = parseUsage(json);
       return content;
     },
   };
