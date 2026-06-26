@@ -257,25 +257,50 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
         <div className="flex gap-2">
           {shot.promptEn ? (
             <>
-              <button type="button" onClick={() => onCopy(shot.prompt)} className="text-xs text-blue-600 hover:underline">
+              <button
+                type="button"
+                aria-label={`复制 镜头 ${shot.index} 中文提示词`}
+                onClick={() => onCopy(shot.prompt)}
+                className="text-xs text-blue-600 hover:underline"
+              >
                 复制中文
               </button>
-              <button type="button" onClick={() => onCopy(shot.promptEn ?? '')} className="text-xs text-blue-600 hover:underline">
+              <button
+                type="button"
+                aria-label={`复制 镜头 ${shot.index} 英文提示词`}
+                onClick={() => onCopy(shot.promptEn ?? '')}
+                className="text-xs text-blue-600 hover:underline"
+              >
                 复制英文
               </button>
             </>
           ) : (
-            <button type="button" onClick={() => onCopy(shot.prompt)} className="text-xs text-blue-600 hover:underline">
+            <button
+              type="button"
+              aria-label={`复制 镜头 ${shot.index} 提示词`}
+              onClick={() => onCopy(shot.prompt)}
+              className="text-xs text-blue-600 hover:underline"
+            >
               复制
             </button>
           )}
           {!editing && (
-            <button type="button" onClick={onEdit} className="text-xs text-blue-600 hover:underline">
+            <button
+              type="button"
+              aria-label={`编辑 镜头 ${shot.index}`}
+              onClick={onEdit}
+              className="text-xs text-blue-600 hover:underline"
+            >
               编辑
             </button>
           )}
           {onDelete && (
-            <button type="button" onClick={onDelete} className="text-xs text-red-600 hover:underline">
+            <button
+              type="button"
+              aria-label={`删除 镜头 ${shot.index}`}
+              onClick={onDelete}
+              className="text-xs text-red-600 hover:underline"
+            >
               删除
             </button>
           )}
@@ -344,6 +369,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
           {shot.promptEn !== undefined && autoSync && (
             <OneTimeKeyInput
               oneTimeKey={oneTimeKey}
+              aria-label={`一次性 API Key，用于镜头 ${shot.index} 自动翻译`}
               className="w-full rounded border border-amber-300 p-1 text-[11px] outline-none focus:border-amber-500"
               placeholder="一次性 API Key（已关闭保存，用于自动翻译，不落盘）"
             />
@@ -352,6 +378,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             <span className="text-[11px] font-medium text-gray-500">中文</span>
           )}
           <textarea
+            aria-label={`编辑 镜头 ${shot.index} 中文提示词`}
             className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 text-xs outline-none focus:border-blue-500"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -361,6 +388,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             <>
               <span className="text-[11px] font-medium text-gray-500">English</span>
               <textarea
+                aria-label={`编辑 镜头 ${shot.index} 英文提示词`}
                 className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 text-xs outline-none focus:border-blue-500"
                 value={draftEn}
                 onChange={(e) => setDraftEn(e.target.value)}
@@ -412,11 +440,13 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
         <div className="mt-2 flex flex-col gap-2 border-t border-gray-100 pt-2">
           <OneTimeKeyInput
             oneTimeKey={oneTimeKey}
+            aria-label={`一次性 API Key，用于重写 镜头 ${shot.index}`}
             className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
             placeholder="一次性 API Key（已关闭保存，用于重写，不落盘）"
           />
           <div className="flex items-center gap-2">
             <input
+              aria-label={`镜头 ${shot.index} 优化反馈`}
               className="flex-1 rounded border border-gray-300 p-1 text-xs outline-none focus:border-blue-500"
               placeholder="一句反馈，如「更暗一点 / 改俯拍 / 去掉路人」"
               value={feedback}
@@ -424,6 +454,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             />
             <button
               type="button"
+              aria-label={`按反馈优化 镜头 ${shot.index}`}
               onClick={() => doRewrite('feedback')}
               disabled={disabled || !feedback.trim()}
               className="shrink-0 rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
@@ -434,6 +465,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
           <div className="flex gap-2">
             <button
               type="button"
+              aria-label={`重新生成 镜头 ${shot.index}`}
               onClick={() => doRewrite('regenerate')}
               disabled={disabled}
               className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
@@ -443,6 +475,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             {history.length > 0 && (
               <button
                 type="button"
+                aria-label={`撤销 镜头 ${shot.index} 上一次重写，当前 ${history.length} 步可撤销`}
                 onClick={onUndo}
                 disabled={disabled}
                 className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
@@ -461,6 +494,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             <span className="text-[11px] font-medium text-gray-500">首帧图像提示词</span>
             <button
               type="button"
+              aria-label={`${shot.firstFramePrompt ? '重新生成' : '生成'} 镜头 ${shot.index} 首帧提示词`}
               onClick={onGenerateFirstFrame}
               disabled={busy || firstFraming}
               className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50 disabled:opacity-50"
@@ -470,6 +504,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             {shot.firstFramePrompt && (
               <button
                 type="button"
+                aria-label={`复制 镜头 ${shot.index} 中文首帧提示词`}
                 onClick={() => onCopyFirstFrame(shot.firstFramePrompt ?? '')}
                 className="text-[11px] text-blue-600 hover:underline"
               >
@@ -479,6 +514,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             {shot.firstFramePromptEn && (
               <button
                 type="button"
+                aria-label={`复制 镜头 ${shot.index} 英文首帧提示词`}
                 onClick={() => onCopyFirstFrame(shot.firstFramePromptEn ?? '')}
                 className="text-[11px] text-blue-600 hover:underline"
               >
