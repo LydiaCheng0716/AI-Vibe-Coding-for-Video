@@ -38,3 +38,24 @@ jobs:
 
       - name: Bundle size guard
         run: npm run check:bundle
+
+  e2e:
+    name: e2e smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps (clean, from lockfile)
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E smoke
+        run: npm run e2e

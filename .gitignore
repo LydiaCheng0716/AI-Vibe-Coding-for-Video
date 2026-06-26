@@ -28,3 +28,7 @@ npm-debug.log*
 # worktree 目录（如放在仓库内）
 .worktrees/
 coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
