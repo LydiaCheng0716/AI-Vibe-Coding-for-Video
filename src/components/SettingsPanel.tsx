@@ -6,6 +6,7 @@ import { defaultSettings } from '../core/defaults';
 import { originForProvider, hasHostPermission, requestHostPermission } from '../services/permissions';
 import { PROVIDER_PRESETS, applyPreset, presetIdForProvider, getPreset } from '../core/providerPresets';
 import { testConnection } from '../services/connectionTest';
+import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
 
 const VIDEO_MODELS: VideoModel[] = ['generic', 'jimeng', 'keling', 'sora', 'runway'];
 const ASPECTS = ['16:9', '9:16', '1:1'];
@@ -15,6 +16,7 @@ const LANG_LABELS: Record<OutputLanguage, string> = { zh: '中文', en: 'English
 
 export default function SettingsPanel() {
   const [settings, setSettings] = useState<Settings>(defaultSettings());
+  const oneTimeKey = useOneTimeKey({ persistApiKey: settings.persistApiKey });
   const [maskedKey, setMaskedKey] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
@@ -107,8 +109,8 @@ export default function SettingsPanel() {
           await requestHostPermission(origin);
         }
       }
-      // Key：设置区刚填未存的 keyInput 优先；否则交给服务取已保存的加密 Key。测试不落盘。
-      const apiKey = keyInput.trim() || undefined;
+      // Key：保存模式下刚填未存的 keyInput 优先；不保存模式下用一次性 Key。测试不落盘。
+      const apiKey = settings.persistApiKey ? keyInput.trim() || undefined : oneTimeKey.apiKey;
       const r = await testConnection({ provider, apiKey });
       if (r.ok) {
         setTestOk(true);
@@ -121,6 +123,7 @@ export default function SettingsPanel() {
       setTestOk(false);
       setTestMsg('❌ 测试失败，请重试。');
     } finally {
+      if (!settings.persistApiKey) oneTimeKey.clear();
       setTesting(false);
     }
   }
@@ -226,13 +229,10 @@ export default function SettingsPanel() {
         ) : (
           <label className="text-xs">
             API Key（本次测试用，不保存、不落盘）
-            <input
-              type="password"
-              autoComplete="off"
+            <OneTimeKeyInput
+              oneTimeKey={oneTimeKey}
               className="mt-1 w-full rounded border border-amber-300 p-1 text-sm outline-none focus:border-amber-500"
               placeholder="粘贴一次性 Key 用于「测试连接」"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
             />
             <p className="mt-1 text-[11px] leading-snug text-amber-700">
               已关闭保存：Key 不会落盘。生成时在生成区临时输入；此处填的 Key 仅用于「测试连接」，用完即弃。

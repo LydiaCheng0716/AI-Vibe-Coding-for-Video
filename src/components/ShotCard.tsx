@@ -5,6 +5,7 @@ import type { RewriteMode } from '../prompts/rewrite';
 import { copyToClipboard } from '../services/clipboard';
 import { shotSizeOptions, cameraMovementOptions, DURATION_OPTIONS, withCurrent } from '../core/shotParams';
 import { useProjectStore } from '../sidepanel/projectStore';
+import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
 
 /** 撤销栈上限：避免多轮重写累积过多 Shot 占内存（Kimi minor）。 */
 const UNDO_MAX = 20;
@@ -36,8 +37,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
   const [feedback, setFeedback] = useState('');
   const [rewriting, setRewriting] = useState(false);
   const [history, setHistory] = useState<Shot[]>([]); // 撤销栈：每次重写前压入旧版
-  // 一次性 Key（不保存 Key 模式）：重写用，不落盘。
-  const [tempKey, setTempKey] = useState('');
+  const oneTimeKey = useOneTimeKey({ persistApiKey });
   // 同步重入保护：快速连点时 state 快照会滞后，用 ref 在事件起点同步拦截（Kimi P2）。
   const rewritingRef = useRef(false);
   const undoingRef = useRef(false);
@@ -103,14 +103,13 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
     setRewriting(true);
     setNotice(null);
     try {
-      const apiKey = persistApiKey ? undefined : tempKey.trim() || undefined;
       const r = await rewriteShot({
         project,
         shotId: shot.id,
         mode,
         feedback: mode === 'feedback' ? feedback : undefined,
         paramOverrides,
-        apiKey,
+        apiKey: oneTimeKey.apiKey,
       });
       if (r.ok) {
         const prev = shot;
@@ -125,7 +124,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
         setNotice(r.error.message);
       }
     } finally {
-      if (!persistApiKey) setTempKey(''); // 一次性 Key 用完即弃，异常路径也清（Codex P3）
+      if (!oneTimeKey.persistApiKey) oneTimeKey.clear(); // 一次性 Key 用完即弃，异常路径也清（Codex P3）
       rewritingRef.current = false;
       setRewriting(false);
     }
@@ -168,13 +167,12 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
     setFirstFraming(true);
     setNotice(null);
     try {
-      const apiKey = persistApiKey ? undefined : tempKey.trim() || undefined;
       const r = await generateFirstFrame({
         shot,
         characters: project.characters,
         globalStyle: project.globalStyle,
         lang: project.params.outputLanguage,
-        apiKey,
+        apiKey: oneTimeKey.apiKey,
       });
       if (!r.ok) {
         setNotice(r.error.message);
@@ -185,7 +183,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
         setNotice(save.error.message);
       }
     } finally {
-      if (!persistApiKey) setTempKey('');
+      if (!oneTimeKey.persistApiKey) oneTimeKey.clear();
       firstFramingRef.current = false;
       setFirstFraming(false);
     }
@@ -202,8 +200,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
     setTranslating(target);
     setNotice(null);
     try {
-      const apiKey = persistApiKey ? undefined : tempKey.trim() || undefined;
-      const r = await translateText({ text, targetLang: target, apiKey });
+      const r = await translateText({ text, targetLang: target, apiKey: oneTimeKey.apiKey });
       if (r.ok) {
         // 仅当目标框自请求发起后未被用户改动时才写入，避免覆盖用户在途编辑（Codex P2）。
         if (target === 'en') setDraftEn((cur) => (cur === before ? r.data : cur));
@@ -212,6 +209,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
         setNotice(`翻译失败，可重试：${r.error.message}`);
       }
     } finally {
+      if (!oneTimeKey.persistApiKey) oneTimeKey.clear();
       translatingRef.current = false;
       setTranslating(null);
     }
@@ -319,14 +317,11 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
               {translating && <span className="text-blue-600">翻译中…</span>}
             </label>
           )}
-          {shot.promptEn !== undefined && autoSync && !persistApiKey && (
-            <input
-              type="password"
-              autoComplete="off"
+          {shot.promptEn !== undefined && autoSync && (
+            <OneTimeKeyInput
+              oneTimeKey={oneTimeKey}
               className="w-full rounded border border-amber-300 p-1 text-[11px] outline-none focus:border-amber-500"
               placeholder="一次性 API Key（已关闭保存，用于自动翻译，不落盘）"
-              value={tempKey}
-              onChange={(e) => setTempKey(e.target.value)}
             />
           )}
           {shot.promptEn !== undefined && (
@@ -391,16 +386,11 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
       {/* 单镜头迭代（Issue #30）：重新生成 / 反馈式优化 / 撤销 */}
       {!editing && (
         <div className="mt-2 flex flex-col gap-2 border-t border-gray-100 pt-2">
-          {!persistApiKey && (
-            <input
-              type="password"
-              autoComplete="off"
-              className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-              placeholder="一次性 API Key（已关闭保存，用于重写，不落盘）"
-              value={tempKey}
-              onChange={(e) => setTempKey(e.target.value)}
-            />
-          )}
+          <OneTimeKeyInput
+            oneTimeKey={oneTimeKey}
+            className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
+            placeholder="一次性 API Key（已关闭保存，用于重写，不落盘）"
+          />
           <div className="flex items-center gap-2">
             <input
               className="flex-1 rounded border border-gray-300 p-1 text-xs outline-none focus:border-blue-500"

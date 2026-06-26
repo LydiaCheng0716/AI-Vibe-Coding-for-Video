@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Project } from '../core/models';
 import { generateBgmPrompt } from '../services/generation';
-import { getSettings } from '../services/storage';
 import { copyToClipboard } from '../services/clipboard';
 import { useProjectStore } from '../sidepanel/projectStore';
+import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
 
 interface Props {
   project: Project | null;
@@ -14,25 +14,12 @@ interface Props {
 export default function BgmPanel({ project, busy }: Props) {
   const { updateBgm } = useProjectStore();
   const [notice, setNotice] = useState<string | null>(null);
-  const [persistKey, setPersistKey] = useState(true);
-  const [tempKey, setTempKey] = useState('');
+  const oneTimeKey = useOneTimeKey();
   const bgm = project?.bgm ?? null;
-
-  useEffect(() => {
-    let on = true;
-    getSettings()
-      .then((s) => {
-        if (on) setPersistKey(s.persistApiKey);
-      })
-      .catch(() => {});
-    return () => {
-      on = false;
-    };
-  }, []);
 
   async function onGenerate() {
     if (busy) return;
-    if (!persistKey && !tempKey.trim()) {
+    if (!oneTimeKey.persistApiKey && !oneTimeKey.hasKey) {
       setNotice('请先输入本次使用的 API Key（已关闭保存）。');
       return;
     }
@@ -44,10 +31,10 @@ export default function BgmPanel({ project, busy }: Props) {
         story: project?.story,
         project: project ?? undefined,
         language,
-        ...(persistKey ? {} : { apiKey: tempKey }),
+        ...(oneTimeKey.apiKey ? { apiKey: oneTimeKey.apiKey } : {}),
       });
     } finally {
-      if (!persistKey) setTempKey(''); // 一次性 Key 用完即弃，异常路径也清（kimi LOW）
+      if (!oneTimeKey.persistApiKey) oneTimeKey.clear(); // 一次性 Key 用完即弃，异常路径也清（kimi LOW）
     }
     if (!r.ok) {
       setNotice(r.error.message);
@@ -89,16 +76,11 @@ export default function BgmPanel({ project, busy }: Props) {
           </button>
         </div>
       </div>
-      {!persistKey && (
-        <input
-          type="password"
-          autoComplete="off"
-          className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-          placeholder="本次使用的 API Key（已关闭保存，不落盘）"
-          value={tempKey}
-          onChange={(e) => setTempKey(e.target.value)}
-        />
-      )}
+      <OneTimeKeyInput
+        oneTimeKey={oneTimeKey}
+        className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
+        placeholder="本次使用的 API Key（已关闭保存，不落盘）"
+      />
       {bgm && (
         <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs text-gray-800">
           {bgm.prompt}

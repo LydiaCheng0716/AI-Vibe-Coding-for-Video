@@ -3,6 +3,7 @@ import type { GlobalStyle, OutputLanguage, StyleFieldKey, StyleProfile } from '.
 import { STYLE_FIELD_KEYS, STYLE_FIELD_LABELS, emptyStyleProfile } from '../core/styleProfile';
 import { suggestStyleField } from '../services/styleSuggest';
 import { useProjectStore } from '../sidepanel/projectStore';
+import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
 
 interface Props {
   globalStyle: GlobalStyle | undefined;
@@ -20,7 +21,7 @@ export default function StylePanel({ globalStyle, story, lang, busy, persistApiK
   const [resuggesting, setResuggesting] = useState<StyleFieldKey | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [tempKey, setTempKey] = useState('');
+  const oneTimeKey = useOneTimeKey({ persistApiKey });
 
   async function persist(patch: Partial<GlobalStyle>) {
     const r = await updateGlobalStyle(patch);
@@ -49,14 +50,17 @@ export default function StylePanel({ globalStyle, story, lang, busy, persistApiK
     if (busy || locked) return;
     setResuggesting(key);
     setNotice(null);
-    const apiKey = persistApiKey ? undefined : tempKey.trim() || undefined;
-    const r = await suggestStyleField({ field: key, story, profile, apiKey });
-    setResuggesting(null);
-    if (r.ok) {
-      const suggestions = { ...(globalStyle?.suggestions ?? {}), [key]: r.data };
-      await persist({ suggestions });
-    } else {
-      setNotice(r.error.message);
+    try {
+      const r = await suggestStyleField({ field: key, story, profile, apiKey: oneTimeKey.apiKey });
+      if (r.ok) {
+        const suggestions = { ...(globalStyle?.suggestions ?? {}), [key]: r.data };
+        await persist({ suggestions });
+      } else {
+        setNotice(r.error.message);
+      }
+    } finally {
+      if (!oneTimeKey.persistApiKey) oneTimeKey.clear();
+      setResuggesting(null);
     }
   }
 
@@ -80,16 +84,11 @@ export default function StylePanel({ globalStyle, story, lang, busy, persistApiK
 
       {!collapsed && (
         <>
-          {!persistApiKey && (
-            <input
-              type="password"
-              autoComplete="off"
-              className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-              placeholder="一次性 API Key（已关闭保存，仅用于「重新建议」，不落盘）"
-              value={tempKey}
-              onChange={(e) => setTempKey(e.target.value)}
-            />
-          )}
+          <OneTimeKeyInput
+            oneTimeKey={oneTimeKey}
+            className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
+            placeholder="一次性 API Key（已关闭保存，仅用于「重新建议」，不落盘）"
+          />
           {STYLE_FIELD_KEYS.map((key) => {
             const candidates = globalStyle?.suggestions?.[key] ?? [];
             return (

@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Character, CharacterFieldKey, CharacterProfile, OutputLanguage } from '../core/models';
 import { CHARACTER_FIELD_KEYS, CHARACTER_FIELD_LABELS, emptyProfile } from '../core/characterProfile';
-import { getSettings } from '../services/storage';
 import { suggestCharacterField } from '../services/characterSuggest';
 import { copyToClipboard } from '../services/clipboard';
 import CharacterLibrary from './CharacterLibrary';
 import { useProjectStore } from '../sidepanel/projectStore';
+import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
 import {
   saveCharacterToLibrary,
   CHARACTER_CATEGORIES,
@@ -35,27 +35,11 @@ export default function CharacterPanel({
   const { addCharacter } = useProjectStore();
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  // 不保存 Key 模式（ADR-1 #8）：persist=false 时「重新建议」需一次性 Key（不落盘），与生成区一致。
-  const [persistKey, setPersistKey] = useState(true);
-  const [tempKey, setTempKey] = useState('');
+  const oneTimeKey = useOneTimeKey();
   // Issue #40：角色固定可选/可跳过——可收起整个角色区直达分镜。
   const [collapsed, setCollapsed] = useState(false);
   // 角色库刷新信号：卡片「存入角色库」后 +1，触发库列表重载。
   const [libRefresh, setLibRefresh] = useState(0);
-
-  useEffect(() => {
-    let on = true;
-    getSettings()
-      .then((s) => {
-        if (on) setPersistKey(s.persistApiKey);
-      })
-      .catch(() => {
-        /* 读取失败按默认保存模式 */
-      });
-    return () => {
-      on = false;
-    };
-  }, []);
 
   async function onAdd() {
     setAdding(true);
@@ -101,16 +85,11 @@ export default function CharacterPanel({
         <p className="text-[11px] text-gray-400">角色固定是可选的，已收起；展开可调校角色或从角色库复用。</p>
       ) : (
         <>
-          {!persistKey && (
-            <input
-              type="password"
-              autoComplete="off"
-              className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-              placeholder="一次性 API Key（已关闭保存，仅用于「重新建议」，不落盘）"
-              value={tempKey}
-              onChange={(e) => setTempKey(e.target.value)}
-            />
-          )}
+          <OneTimeKeyInput
+            oneTimeKey={oneTimeKey}
+            className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
+            placeholder="一次性 API Key（已关闭保存，仅用于「重新建议」，不落盘）"
+          />
           {characters.map((c) => (
             <CharacterCard
               key={c.id}
@@ -118,7 +97,7 @@ export default function CharacterPanel({
               story={story}
               lang={lang}
               busy={busy}
-              apiKey={persistKey ? undefined : tempKey.trim() || undefined}
+              oneTimeKey={oneTimeKey}
               onSavedToLibrary={() => setLibRefresh((n) => n + 1)}
             />
           ))}
@@ -135,7 +114,7 @@ interface CardProps {
   lang: OutputLanguage;
   busy: boolean;
   /** 不保存 Key 模式的一次性 Key（透传给「重新建议」服务，不落盘）。 */
-  apiKey?: string;
+  oneTimeKey: ReturnType<typeof useOneTimeKey>;
   /** 存入角色库后通知面板刷新库列表。 */
   onSavedToLibrary: () => void;
 }
@@ -145,7 +124,7 @@ function CharacterCard({
   story,
   lang,
   busy,
-  apiKey,
+  oneTimeKey,
   onSavedToLibrary,
 }: CardProps) {
   const { updateCharacter } = useProjectStore();
@@ -200,14 +179,23 @@ function CharacterCard({
     if (busy || locked) return;
     setResuggesting(key);
     setNotice(null);
-    const r = await suggestCharacterField({ character: { ...character, profile }, field: key, story, apiKey });
-    setResuggesting(null);
-    if (r.ok) {
-      // 仅更新该字段候选，不动其它字段/角色。
-      const suggestions = { ...(character.suggestions ?? {}), [key]: r.data };
-      await persist({ suggestions });
-    } else {
-      setNotice(r.error.message);
+    try {
+      const r = await suggestCharacterField({
+        character: { ...character, profile },
+        field: key,
+        story,
+        apiKey: oneTimeKey.apiKey,
+      });
+      if (r.ok) {
+        // 仅更新该字段候选，不动其它字段/角色。
+        const suggestions = { ...(character.suggestions ?? {}), [key]: r.data };
+        await persist({ suggestions });
+      } else {
+        setNotice(r.error.message);
+      }
+    } finally {
+      if (!oneTimeKey.persistApiKey) oneTimeKey.clear();
+      setResuggesting(null);
     }
   }
 
