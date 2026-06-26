@@ -1,6 +1,13 @@
 import { defineManifest } from '@crxjs/vite-plugin';
 import pkg from './package.json';
 
+const extensionIcons = {
+  16: 'icons/icon16.png',
+  32: 'icons/icon32.png',
+  48: 'icons/icon48.png',
+  128: 'icons/icon128.png',
+};
+
 // MV3 清单（ADR-5）。Spike #3 已拍板：MVP 支持 OpenAI 兼容（已实测可直连），
 // 内置已验证域名按域名最小化静态声明（禁 <all_urls>，ADR-5(4) 红线）。
 // Anthropic 域名一并静态声明以覆盖 Claude 用户（适配器保留，浏览器直连未实测）。
@@ -11,8 +18,9 @@ export default defineManifest({
   name: 'StoryPop',
   version: pkg.version,
   description: pkg.description,
+  icons: extensionIcons,
   side_panel: { default_path: 'index.html' },
-  action: { default_title: 'StoryPop' },
+  action: { default_title: 'StoryPop', default_icon: extensionIcons },
   background: { service_worker: 'src/background.ts', type: 'module' },
   permissions: ['sidePanel', 'storage'],
   host_permissions: ['https://api.openai.com/*', 'https://api.anthropic.com/*'],
