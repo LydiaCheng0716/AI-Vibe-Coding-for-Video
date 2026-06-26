@@ -22,6 +22,9 @@ const en = {
   'common.zh': 'Chinese',
   'common.en': 'English',
 
+  'collapsible.expandAria': 'Expand {title}',
+  'collapsible.collapseAria': 'Collapse {title}',
+
   'settings.title': 'Settings',
   'settings.providerTitle': 'LLM Provider (bring your own key)',
   'settings.preset': 'Preset (fills Base URL and default model; you can still edit them)',

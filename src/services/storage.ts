@@ -41,6 +41,15 @@ async function write(items: Record<string, unknown>): Promise<Result<void>> {
   }
 }
 
+function normalizePanelCollapsed(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, boolean> = {};
+  for (const [key, collapsed] of Object.entries(value)) {
+    if (typeof collapsed === 'boolean') out[key] = collapsed;
+  }
+  return out;
+}
+
 // ---- 草稿（TASK-001 草稿恢复）----
 
 export async function saveDraft(text: string): Promise<Result<void>> {
@@ -81,6 +90,7 @@ export async function getSettings(): Promise<Settings> {
     exportPromptLang: EXPORT_PROMPT_LANGS.includes(stored.exportPromptLang as (typeof EXPORT_PROMPT_LANGS)[number])
       ? stored.exportPromptLang
       : base.exportPromptLang,
+    panelCollapsed: normalizePanelCollapsed(stored.panelCollapsed),
     schemaVersion: stored.schemaVersion ?? SCHEMA_VERSION,
   };
 }
@@ -111,6 +121,16 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Result<v
     const current = await getSettings();
     return write({
       [STORAGE_KEYS.settings]: { ...current, ...patch, schemaVersion: SCHEMA_VERSION },
+    });
+  });
+}
+
+export async function setPanelCollapsed(key: string, collapsed: boolean): Promise<Result<void>> {
+  return withSettingsLock(async () => {
+    const current = await getSettings();
+    const panelCollapsed = { ...(current.panelCollapsed ?? {}), [key]: collapsed };
+    return write({
+      [STORAGE_KEYS.settings]: { ...current, panelCollapsed, schemaVersion: SCHEMA_VERSION },
     });
   });
 }

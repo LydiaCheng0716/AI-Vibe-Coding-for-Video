@@ -26,6 +26,7 @@ export function defaultSettings(): Settings {
     autoTranslateSync: false,
     exportFormat: 'markdown',
     exportPromptLang: 'both',
+    panelCollapsed: {},
     schemaVersion: SCHEMA_VERSION,
   };
 }
