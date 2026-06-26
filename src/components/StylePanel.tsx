@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import type { GlobalStyle, OutputLanguage, Project, StyleFieldKey, StyleProfile } from '../core/models';
+import type { GlobalStyle, OutputLanguage, StyleFieldKey, StyleProfile } from '../core/models';
 import { STYLE_FIELD_KEYS, STYLE_FIELD_LABELS, emptyStyleProfile } from '../core/styleProfile';
-import { updateGlobalStyle } from '../services/storage';
 import { suggestStyleField } from '../services/styleSuggest';
+import { useProjectStore } from '../sidepanel/projectStore';
 
 interface Props {
   globalStyle: GlobalStyle | undefined;
@@ -10,13 +10,12 @@ interface Props {
   lang: OutputLanguage;
   busy: boolean;
   persistApiKey: boolean;
-  /** 调校/锁定后返回更新的 Project（含重注入的镜头），由 App 同步。 */
-  onProjectUpdated: (project: Project) => void;
 }
 
-export default function StylePanel({ globalStyle, story, lang, busy, persistApiKey, onProjectUpdated }: Props) {
+export default function StylePanel({ globalStyle, story, lang, busy, persistApiKey }: Props) {
   const labels = STYLE_FIELD_LABELS[lang] ?? STYLE_FIELD_LABELS.zh;
   const locked = !!globalStyle?.locked;
+  const { updateGlobalStyle } = useProjectStore();
   const [profile, setProfile] = useState<StyleProfile>(globalStyle?.profile ?? emptyStyleProfile());
   const [resuggesting, setResuggesting] = useState<StyleFieldKey | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -25,9 +24,7 @@ export default function StylePanel({ globalStyle, story, lang, busy, persistApiK
 
   async function persist(patch: Partial<GlobalStyle>) {
     const r = await updateGlobalStyle(patch);
-    if (r.ok) {
-      if (r.data) onProjectUpdated(r.data);
-    } else {
+    if (!r.ok) {
       setNotice(r.error.message);
     }
   }

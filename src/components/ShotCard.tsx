@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 import type { Project, Shot } from '../core/models';
-import { updateShotPrompt, replaceShot, updateShotFirstFrame } from '../services/storage';
 import { rewriteShot, generateFirstFrame, translateText } from '../services/generation';
 import type { RewriteMode } from '../prompts/rewrite';
 import { copyToClipboard } from '../services/clipboard';
 import { shotSizeOptions, cameraMovementOptions, DURATION_OPTIONS, withCurrent } from '../core/shotParams';
+import { useProjectStore } from '../sidepanel/projectStore';
 
 /** 撤销栈上限：避免多轮重写累积过多 Shot 占内存（Kimi minor）。 */
 const UNDO_MAX = 20;
@@ -17,13 +17,12 @@ interface Props {
   busy: boolean;
   /** 是否保存 Key（由 App 读一次下传，避免每卡各读一次 storage，Kimi minor）。 */
   persistApiKey: boolean;
-  /** 镜头变更（手动保存 / 重写 / 撤销）后通知父级更新内存态。 */
-  onShotChanged: (shot: Shot) => void;
   /** 删除本镜头（Issue #56；确认由父级处理）。 */
   onDelete?: () => void;
 }
 
-export default function ShotCard({ shot, project, busy, persistApiKey, onShotChanged, onDelete }: Props) {
+export default function ShotCard({ shot, project, busy, persistApiKey, onDelete }: Props) {
+  const { updateShotPrompt, replaceShot, updateShotFirstFrame } = useProjectStore();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(shot.prompt);
   const [draftEn, setDraftEn] = useState(shot.promptEn ?? ''); // 双语英文版编辑草稿（Issue #41）
@@ -58,7 +57,6 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
         setNotice(r.error.message);
         return;
       }
-      onShotChanged(updated);
     } else {
       const r = await updateShotPrompt(shot.id, draft);
       setSaving(false);
@@ -66,7 +64,6 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
         setNotice(r.error.message);
         return;
       }
-      onShotChanged({ ...shot, prompt: draft, editedByUser: true });
     }
     setEditing(false);
     setNotice(null);
@@ -123,7 +120,6 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
           return;
         }
         setHistory((h) => [...h, prev].slice(-UNDO_MAX));
-        onShotChanged(r.data);
         if (mode === 'feedback') setFeedback('');
       } else {
         setNotice(r.error.message);
@@ -146,7 +142,6 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
         return;
       }
       setHistory((h) => h.slice(0, -1));
-      onShotChanged(prev);
       setNotice('已撤销到上一版');
     } finally {
       undoingRef.current = false;
@@ -186,10 +181,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onShotCha
         return;
       }
       const save = await updateShotFirstFrame(shot.id, r.data);
-      if (save.ok && save.data) {
-        const updated = save.data.shots.find((s) => s.id === shot.id);
-        if (updated) onShotChanged(updated);
-      } else if (!save.ok) {
+      if (!save.ok) {
         setNotice(save.error.message);
       }
     } finally {

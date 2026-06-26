@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
-import type { Project, BgmPrompt } from '../core/models';
+import type { Project } from '../core/models';
 import { generateBgmPrompt } from '../services/generation';
-import { updateCurrentProjectBgm, getSettings } from '../services/storage';
+import { getSettings } from '../services/storage';
 import { copyToClipboard } from '../services/clipboard';
+import { useProjectStore } from '../sidepanel/projectStore';
 
 interface Props {
   project: Project | null;
   /** 全局 LLM 锁占用中（与分镜共享，TASK-009）。 */
   busy: boolean;
-  /** BGM 生成成功后通知 App 更新内存态。 */
-  onBgmGenerated: (bgm: BgmPrompt) => void;
 }
 
-export default function BgmPanel({ project, busy, onBgmGenerated }: Props) {
+export default function BgmPanel({ project, busy }: Props) {
+  const { updateBgm } = useProjectStore();
   const [notice, setNotice] = useState<string | null>(null);
   const [persistKey, setPersistKey] = useState(true);
   const [tempKey, setTempKey] = useState('');
@@ -54,12 +54,11 @@ export default function BgmPanel({ project, busy, onBgmGenerated }: Props) {
       return;
     }
     // 服务不自行持久化：成功后写回当前项目（api-spec §3.4）。写失败不静默（kimi MED）。
-    const saved = await updateCurrentProjectBgm(r.data);
+    const saved = await updateBgm(r.data);
     if (!saved.ok) {
       setNotice(saved.error.message);
       return;
     }
-    onBgmGenerated(r.data);
     setNotice(null);
   }
 

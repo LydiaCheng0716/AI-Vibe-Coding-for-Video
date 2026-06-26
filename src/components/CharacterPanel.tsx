@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { Character, CharacterFieldKey, CharacterProfile, OutputLanguage, Project } from '../core/models';
+import type { Character, CharacterFieldKey, CharacterProfile, OutputLanguage } from '../core/models';
 import { CHARACTER_FIELD_KEYS, CHARACTER_FIELD_LABELS, emptyProfile } from '../core/characterProfile';
-import { updateCharacter, addCharacter, getSettings } from '../services/storage';
+import { getSettings } from '../services/storage';
 import { suggestCharacterField } from '../services/characterSuggest';
 import { copyToClipboard } from '../services/clipboard';
 import CharacterLibrary from './CharacterLibrary';
+import { useProjectStore } from '../sidepanel/projectStore';
 import {
   saveCharacterToLibrary,
   CHARACTER_CATEGORIES,
@@ -18,10 +19,6 @@ interface Props {
   lang: OutputLanguage;
   /** 全局 LLM 锁占用中：禁用「重新建议」。 */
   busy: boolean;
-  /** 角色调校/锁定后返回更新的 Project（含重注入的镜头），由 App 同步。 */
-  onProjectUpdated: (project: Project) => void;
-  /** 新增角色后由 App 追加到内存态。 */
-  onCharacterAdded: (character: Character) => void;
 }
 
 function displayName(c: Character): string {
@@ -34,9 +31,8 @@ export default function CharacterPanel({
   story,
   lang,
   busy,
-  onProjectUpdated,
-  onCharacterAdded,
 }: Props) {
+  const { addCharacter } = useProjectStore();
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // 不保存 Key 模式（ADR-1 #8）：persist=false 时「重新建议」需一次性 Key（不落盘），与生成区一致。
@@ -66,16 +62,14 @@ export default function CharacterPanel({
     setNotice(null);
     const r = await addCharacter({ name: null, appearance: '', profile: emptyProfile() });
     setAdding(false);
-    if (r.ok) onCharacterAdded(r.data);
-    else setNotice(r.error.message);
+    if (!r.ok) setNotice(r.error.message);
   }
 
   // 角色库「用此角色」→ 注入当前项目。
   async function onUseFromLibrary(character: Omit<Character, 'id'>) {
     setNotice(null);
     const r = await addCharacter(character);
-    if (r.ok) onCharacterAdded(r.data);
-    else setNotice(r.error.message);
+    if (!r.ok) setNotice(r.error.message);
   }
 
   return (
@@ -125,7 +119,6 @@ export default function CharacterPanel({
               lang={lang}
               busy={busy}
               apiKey={persistKey ? undefined : tempKey.trim() || undefined}
-              onProjectUpdated={onProjectUpdated}
               onSavedToLibrary={() => setLibRefresh((n) => n + 1)}
             />
           ))}
@@ -143,7 +136,6 @@ interface CardProps {
   busy: boolean;
   /** 不保存 Key 模式的一次性 Key（透传给「重新建议」服务，不落盘）。 */
   apiKey?: string;
-  onProjectUpdated: (project: Project) => void;
   /** 存入角色库后通知面板刷新库列表。 */
   onSavedToLibrary: () => void;
 }
@@ -154,9 +146,9 @@ function CharacterCard({
   lang,
   busy,
   apiKey,
-  onProjectUpdated,
   onSavedToLibrary,
 }: CardProps) {
+  const { updateCharacter } = useProjectStore();
   const labels = CHARACTER_FIELD_LABELS[lang] ?? CHARACTER_FIELD_LABELS.zh;
   const locked = !!character.locked;
   // 档案草稿（本地编辑态）：从 props 播种一次（卡片以 id 为 key，角色切换即重挂载）。
@@ -181,9 +173,7 @@ function CharacterCard({
 
   async function persist(patch: Partial<Character>) {
     const r = await updateCharacter(character.id, patch);
-    if (r.ok) {
-      if (r.data) onProjectUpdated(r.data);
-    } else {
+    if (!r.ok) {
       setNotice(r.error.message);
     }
   }
