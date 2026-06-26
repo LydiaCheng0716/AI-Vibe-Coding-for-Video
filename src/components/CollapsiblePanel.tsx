@@ -6,6 +6,7 @@ interface Props {
   title: ReactNode;
   children: ReactNode;
   headerRight?: ReactNode;
+  belowHeader?: ReactNode;
   persistKey?: string;
   collapsed?: boolean;
   onToggleCollapsed?: (collapsed: boolean) => void;
@@ -27,6 +28,7 @@ export default function CollapsiblePanel({
   title,
   children,
   headerRight,
+  belowHeader,
   persistKey,
   collapsed,
   onToggleCollapsed,
@@ -77,6 +79,7 @@ export default function CollapsiblePanel({
         </button>
         {headerRight}
       </div>
+      {belowHeader}
       {!isCollapsed && <div className={contentClassName}>{children}</div>}
     </section>
   );

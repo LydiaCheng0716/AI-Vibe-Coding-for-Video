@@ -71,8 +71,8 @@ export default function CharacterPanel({
           {adding ? t('character.adding') : t('character.add')}
         </button>
       }
+      belowHeader={notice && <p className="text-xs text-red-600">{notice}</p>}
     >
-      {notice && <p className="text-xs text-red-600">{notice}</p>}
       <OneTimeKeyInput
         oneTimeKey={oneTimeKey}
         className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
