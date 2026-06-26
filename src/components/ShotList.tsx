@@ -1,12 +1,13 @@
-import { useState } from 'react';
-import type { Project, Shot } from '../core/models';
+import { useRef, useState } from 'react';
+import type { Project, Shot, Transition } from '../core/models';
 import ShotCard from './ShotCard';
 import { deleteShotById, insertShotAt, moveShot, makeBlankShot } from '../core/shotOps';
-import { rewriteShot, generateTransition } from '../services/generation';
+import { rewriteShot, generateFirstFrame, generateTransition, type FirstFrameResult } from '../services/generation';
 import { TRANSITION_TYPES, transitionLabel } from '../core/transitions';
 import { copyToClipboard } from '../services/clipboard';
 import { useProjectStore } from '../sidepanel/projectStore';
 import { OneTimeKeyInput, useOneTimeKey, type OneTimeKeyState } from './OneTimeKeyInput';
+import { runBatch, skipped } from '../services/batch';
 
 interface Props {
   project: Project;
@@ -168,16 +169,106 @@ function TransitionBar({
 }
 
 export default function ShotList({ project, busy, persistApiKey }: Props) {
-  const { setShots, replaceShot } = useProjectStore();
+  const { setShots, replaceShot, updateShotFirstFrame, updateShotTransition } = useProjectStore();
   const [history, setHistory] = useState<Shot[][]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const oneTimeKey = useOneTimeKey({ persistApiKey });
   const [working, setWorking] = useState(false);
+  const workingRef = useRef(false);
+  const [batchProgress, setBatchProgress] = useState<string | null>(null);
 
   // 不在 0 镜头时返回 null：删到空仍需保留「插入/撤销」入口，避免删空后无法恢复（对抗自检）。
   const ordered = [...project.shots].sort((a, b) => a.index - b.index);
   const disabled = busy || working;
+
+  function failDetails<T>(failed: Array<{ item: T; error: string }>, label: (item: T) => string): string {
+    if (failed.length === 0) return '';
+    return `（${failed.map((f) => `${label(f.item)}：${f.error}`).join('；')}）`;
+  }
+
+  async function onBatchFirstFrames() {
+    if (busy || workingRef.current) return;
+    workingRef.current = true;
+    setWorking(true);
+    setNotice(null);
+    setBatchProgress(`处理中 0/${ordered.length}`);
+    try {
+      const summary = await runBatch<Shot, FirstFrameResult>(
+        ordered,
+        async (shot) => {
+          if (shot.firstFramePrompt) return skipped('已存在首帧');
+          const generated = await generateFirstFrame({
+            shot,
+            characters: project.characters,
+            globalStyle: project.globalStyle,
+            lang: project.params.outputLanguage,
+            apiKey: oneTimeKey.apiKey,
+          });
+          if (!generated.ok) return generated;
+          const saved = await updateShotFirstFrame(shot.id, generated.data);
+          if (!saved.ok) return { ok: false, error: saved.error };
+          return generated;
+        },
+        {
+          onProgress: (done, total) => setBatchProgress(`处理中 ${done}/${total}`),
+        },
+      );
+      setNotice(
+        `首帧批量完成：成功 ${summary.ok.length}、跳过 ${summary.skipped.length}、失败 ${summary.failed.length}${failDetails(
+          summary.failed,
+          (shot) => `镜头 ${shot.index}`,
+        )}`,
+      );
+    } finally {
+      if (!oneTimeKey.persistApiKey) oneTimeKey.clear();
+      setBatchProgress(null);
+      workingRef.current = false;
+      setWorking(false);
+    }
+  }
+
+  async function onBatchTransitions() {
+    if (busy || workingRef.current) return;
+    const pairs = ordered.slice(0, -1).map((prev, i) => ({ prev, next: ordered[i + 1] }));
+    workingRef.current = true;
+    setWorking(true);
+    setNotice(null);
+    setBatchProgress(`处理中 0/${pairs.length}`);
+    try {
+      const summary = await runBatch<{ prev: Shot; next: Shot }, Transition>(
+        pairs,
+        async ({ prev, next }) => {
+          if (prev.transitionToNext) return skipped('已存在转场');
+          const generated = await generateTransition({
+            prevShot: prev,
+            nextShot: next,
+            type: TRANSITION_TYPES[0].id,
+            lang: project.params.outputLanguage,
+            apiKey: oneTimeKey.apiKey,
+          });
+          if (!generated.ok) return generated;
+          const saved = await updateShotTransition(prev.id, generated.data);
+          if (!saved.ok) return { ok: false, error: saved.error };
+          return generated;
+        },
+        {
+          onProgress: (done, total) => setBatchProgress(`处理中 ${done}/${total}`),
+        },
+      );
+      setNotice(
+        `转场批量完成：成功 ${summary.ok.length}、跳过 ${summary.skipped.length}、失败 ${summary.failed.length}${failDetails(
+          summary.failed,
+          ({ prev, next }) => `镜头 ${prev.index}→${next.index}`,
+        )}`,
+      );
+    } finally {
+      if (!oneTimeKey.persistApiKey) oneTimeKey.clear();
+      setBatchProgress(null);
+      workingRef.current = false;
+      setWorking(false);
+    }
+  }
 
   async function applyShots(prev: Shot[], next: Shot[]): Promise<Project | null> {
     const r = await setShots(next);
@@ -263,8 +354,27 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
       <OneTimeKeyInput
         oneTimeKey={oneTimeKey}
         className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-        placeholder="一次性 API Key（已关闭保存，用于插入即时生成，不落盘）"
+        placeholder="一次性 API Key（已关闭保存，用于批量/插入即时生成，不落盘）"
       />
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onBatchFirstFrames}
+          disabled={disabled}
+          className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+        >
+          批量生成首帧
+        </button>
+        <button
+          type="button"
+          onClick={onBatchTransitions}
+          disabled={disabled}
+          className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+        >
+          批量生成转场
+        </button>
+        {batchProgress && <span className="text-xs text-blue-600">{batchProgress}</span>}
+      </div>
       {notice && <p className="text-xs text-gray-600">{notice}</p>}
 
       <InsertBar onInsert={(d) => onInsert(0, d)} disabled={disabled} />
@@ -285,7 +395,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
             <ShotCard
               shot={s}
               project={project}
-              busy={busy}
+              busy={disabled}
               persistApiKey={persistApiKey}
               onDelete={() => void onDelete(s.id)}
             />
@@ -295,7 +405,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
               prev={s}
               next={ordered[i + 1]}
               lang={project.params.outputLanguage}
-              busy={busy}
+              busy={disabled}
               oneTimeKey={oneTimeKey}
             />
           )}

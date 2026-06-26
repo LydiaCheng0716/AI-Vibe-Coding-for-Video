@@ -2,7 +2,9 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ShotCard from '../../src/components/ShotCard';
+import { defaultSettings } from '../../src/core/defaults';
 import { translateText } from '../../src/services/generation';
+import { getSettings, saveSettings } from '../../src/services/storage';
 import { renderWithProjectStore, makeProject, makeShot } from './renderWithProjectStore';
 
 vi.mock('../../src/services/generation', () => ({
@@ -81,5 +83,24 @@ describe('ShotCard bilingual auto translation', () => {
 
     await waitFor(() => expect(screen.queryByText('翻译中…')).toBeNull());
     expect(enTextarea.value).toBe('manual english while pending');
+  });
+
+  it('restores and persists the auto translation preference', async () => {
+    const user = userEvent.setup();
+    await saveSettings({ ...defaultSettings(), autoTranslateSync: true });
+
+    renderWithProjectStore(bilingualProject(), (project) => (
+      <ShotCard shot={project.shots[0]} project={project} busy={false} persistApiKey onDelete={() => {}} />
+    ));
+
+    await user.click(await screen.findByRole('button', { name: '编辑' }));
+    const checkbox = screen.getByRole('checkbox', { name: /编辑后自动翻译同步另一语言/ }) as HTMLInputElement;
+    await waitFor(() => expect(checkbox.checked).toBe(true));
+
+    await user.click(checkbox);
+
+    await waitFor(async () => {
+      expect((await getSettings()).autoTranslateSync).toBe(false);
+    });
   });
 });

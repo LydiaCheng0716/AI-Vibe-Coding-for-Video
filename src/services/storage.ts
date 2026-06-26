@@ -24,6 +24,8 @@ interface DraftRecord {
 }
 
 const WRITE_FAIL_MSG = '本地保存失败（可能空间不足），请重试。';
+const EXPORT_FORMATS = ['markdown', 'json', 'plaintext', 'csv', 'platform'] as const;
+const EXPORT_PROMPT_LANGS = ['zh', 'en', 'both'] as const;
 
 async function read<T>(key: string): Promise<T | undefined> {
   const got = await chrome.storage.local.get(key);
@@ -71,6 +73,13 @@ export async function getSettings(): Promise<Settings> {
     params: { ...base.params, ...stored.params },
     provider: { ...base.provider, ...stored.provider },
     persistApiKey: stored.persistApiKey ?? base.persistApiKey,
+    autoTranslateSync: stored.autoTranslateSync ?? base.autoTranslateSync,
+    exportFormat: EXPORT_FORMATS.includes(stored.exportFormat as (typeof EXPORT_FORMATS)[number])
+      ? stored.exportFormat
+      : base.exportFormat,
+    exportPromptLang: EXPORT_PROMPT_LANGS.includes(stored.exportPromptLang as (typeof EXPORT_PROMPT_LANGS)[number])
+      ? stored.exportPromptLang
+      : base.exportPromptLang,
     schemaVersion: stored.schemaVersion ?? SCHEMA_VERSION,
   };
 }

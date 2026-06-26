@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Project, Shot } from '../core/models';
 import { rewriteShot, generateFirstFrame, translateText } from '../services/generation';
 import type { RewriteMode } from '../prompts/rewrite';
@@ -6,6 +6,7 @@ import { copyToClipboard } from '../services/clipboard';
 import { shotSizeOptions, cameraMovementOptions, DURATION_OPTIONS, withCurrent } from '../core/shotParams';
 import { useProjectStore } from '../sidepanel/projectStore';
 import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
+import { getSettings, saveSettings } from '../services/storage';
 
 /** 撤销栈上限：避免多轮重写累积过多 Shot 占内存（Kimi minor）。 */
 const UNDO_MAX = 20;
@@ -29,6 +30,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
   const [draftEn, setDraftEn] = useState(shot.promptEn ?? ''); // 双语英文版编辑草稿（Issue #41）
   // 双语自动翻译同步（Issue #53）：默认关，避免误触翻译消耗额度。
   const [autoSync, setAutoSync] = useState(false);
+  const autoSyncDirtyRef = useRef(false);
   const [translating, setTranslating] = useState<'zh' | 'en' | null>(null);
   const translatingRef = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -44,6 +46,28 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
   // 首帧图像提示词（Issue #57，按需生成）
   const [firstFraming, setFirstFraming] = useState(false);
   const firstFramingRef = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    getSettings()
+      .then((settings) => {
+        if (alive && !autoSyncDirtyRef.current) setAutoSync(settings.autoTranslateSync ?? false);
+      })
+      .catch(() => {
+        /* 读取失败沿用默认关闭，避免误触消耗额度。 */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function onAutoSyncChange(checked: boolean) {
+    autoSyncDirtyRef.current = true;
+    setAutoSync(checked);
+    const settings = await getSettings();
+    const saved = await saveSettings({ ...settings, autoTranslateSync: checked });
+    if (!saved.ok) setNotice(saved.error.message);
+  }
 
   async function onSave() {
     if (translatingRef.current) return; // 翻译进行中不保存，避免存到翻译前的旧值（同步拦截竞态）
@@ -312,8 +336,8 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
         <div className="mt-2 flex flex-col gap-2">
           {shot.promptEn !== undefined && (
             <label className="flex items-center gap-1 text-[11px] text-gray-600">
-              <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
-              编辑后自动翻译同步另一语言（默认关，避免误触消耗额度）
+              <input type="checkbox" checked={autoSync} onChange={(e) => void onAutoSyncChange(e.target.checked)} />
+              编辑后自动翻译同步另一语言（会记住此偏好）
               {translating && <span className="text-blue-600">翻译中…</span>}
             </label>
           )}

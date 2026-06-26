@@ -89,6 +89,25 @@ describe('storage: settings', () => {
     await saveSettings(s);
     expect((await getSettings()).persistApiKey).toBe(false);
   });
+
+  it('UI preference fields round-trip and missing fields fall back to defaults', async () => {
+    const s = defaultSettings();
+    s.autoTranslateSync = true;
+    s.exportFormat = 'platform';
+    s.exportPromptLang = 'en';
+    await saveSettings(s);
+
+    const got = await getSettings();
+    expect(got.autoTranslateSync).toBe(true);
+    expect(got.exportFormat).toBe('platform');
+    expect(got.exportPromptLang).toBe('en');
+
+    await chrome.storage.local.set({ settings: { provider: { kind: 'anthropic', model: 'x' } } });
+    const old = await getSettings();
+    expect(old.autoTranslateSync).toBe(false);
+    expect(old.exportFormat).toBe('markdown');
+    expect(old.exportPromptLang).toBe('both');
+  });
 });
 
 describe('storage: write failure → STORAGE_WRITE_FAILED', () => {
