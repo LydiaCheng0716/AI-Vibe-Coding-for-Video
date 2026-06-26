@@ -133,6 +133,7 @@ export default function ExportPanel({ project }: Props) {
         )}
         <button
           type="button"
+          data-testid="export-copy"
           onClick={onCopy}
           className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
         >
@@ -153,7 +154,7 @@ export default function ExportPanel({ project }: Props) {
       >
         {t('export.copyAllPrompts')}
       </button>
-      {notice && <p className="text-xs text-gray-600">{notice}</p>}
+      {notice && <p data-testid="notice" className="text-xs text-gray-600">{notice}</p>}
     </div>
   );
 }

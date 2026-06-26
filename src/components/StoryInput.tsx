@@ -123,6 +123,7 @@ export default function StoryInput({ onGenerated, busy }: Props) {
       </label>
       <textarea
         id="story"
+        data-testid="story-input"
         className="min-h-[160px] w-full resize-y rounded border border-gray-300 p-2 text-sm outline-none focus:border-blue-500"
         placeholder={t('storyInput.placeholder')}
         value={text}
@@ -152,13 +153,14 @@ export default function StoryInput({ onGenerated, busy }: Props) {
       />
       <button
         type="button"
+        data-testid="generate-button"
         onClick={onGenerate}
         disabled={busy}
         className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {busy ? t('common.generating') : t('storyInput.generate')}
       </button>
-      {notice && <p className="text-xs text-gray-700">{notice}</p>}
+      {notice && <p data-testid="notice" className="text-xs text-gray-700">{notice}</p>}
     </div>
   );
 }

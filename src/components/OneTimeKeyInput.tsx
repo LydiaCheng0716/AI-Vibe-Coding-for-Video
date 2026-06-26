@@ -72,6 +72,7 @@ export function OneTimeKeyInput({
   return (
     <input
       {...props}
+      data-testid="onetime-key-input"
       type="password"
       autoComplete={autoComplete}
       value={oneTimeKey.tempKey}
