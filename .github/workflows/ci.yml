@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build-test:
-    name: typecheck · test · build
+    name: typecheck · coverage · build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,8 +30,11 @@ jobs:
       - name: Typecheck (lint)
         run: npm run lint
 
-      - name: Unit tests
-        run: npm run test
+      - name: Unit tests with coverage
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
+
+      - name: Bundle size guard
+        run: npm run check:bundle
