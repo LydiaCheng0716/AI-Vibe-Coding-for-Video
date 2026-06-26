@@ -23,7 +23,24 @@ export interface CharacterLibraryItem extends CollectionRecord {
   seedPhrase?: string;
 }
 
-const collection = createLocalCollection<CharacterLibraryItem>(STORAGE_KEYS.characterLibrary);
+// 读时归一（Issue #73）：兜底 category/name/appearance，丢弃非对象脏项。
+function normalizeLibraryItem(raw: unknown): CharacterLibraryItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<CharacterLibraryItem>;
+  const category = CHARACTER_CATEGORIES.includes(r.category as CharacterCategory)
+    ? (r.category as CharacterCategory)
+    : 'other';
+  return {
+    ...(raw as CharacterLibraryItem),
+    category,
+    name: typeof r.name === 'string' ? r.name : null,
+    appearance: typeof r.appearance === 'string' ? r.appearance : '',
+  };
+}
+
+const collection = createLocalCollection<CharacterLibraryItem>(STORAGE_KEYS.characterLibrary, {
+  normalize: normalizeLibraryItem,
+});
 
 export async function listCharacterLibrary(
   category?: CharacterCategory,
