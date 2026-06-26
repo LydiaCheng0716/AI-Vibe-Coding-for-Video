@@ -70,6 +70,47 @@ describe('ShotList component interactions', () => {
     });
   });
 
+  it('keeps focus on a move button after keyboard reorder (no focus loss to body)', async () => {
+    const user = userEvent.setup();
+    renderWithProjectStore(makeProject(), (project) => (
+      <ShotList project={project} busy={false} persistApiKey />
+    ));
+
+    await screen.findByText('分镜（3 个镜头）');
+    await user.click(screen.getByRole('button', { name: '下移 镜头 1' }));
+
+    await waitFor(async () => {
+      const stored = await getCurrentProject();
+      expect(stored?.shots.map((s) => `${s.id}:${s.index}`)).toEqual(['s2:1', 's1:2', 's3:3']);
+    });
+    // 焦点恢复到被移动镜头的某个重排按钮，而非掉回 body（Kimi P2）。
+    await waitFor(() => {
+      const active = document.activeElement as HTMLElement | null;
+      expect(active?.getAttribute('data-shot')).toBe('s1');
+      expect(active?.getAttribute('data-move')).toBeTruthy();
+    });
+  });
+
+  it('ignores a rapid second reorder click and records only one undo step', async () => {
+    renderWithProjectStore(makeProject(), (project) => (
+      <ShotList project={project} busy={false} persistApiKey />
+    ));
+
+    await screen.findByText('分镜（3 个镜头）');
+    const down1 = screen.getByRole('button', { name: '下移 镜头 1' });
+    // 同步连点两次（fireEvent 同步触发）：第二次应被 movingRef 同步拦截，
+    // 不基于旧 ordered 重复移动/重复入撤销栈（Kimi P2）。
+    fireEvent.click(down1);
+    fireEvent.click(down1);
+
+    await waitFor(async () => {
+      const stored = await getCurrentProject();
+      expect(stored?.shots.map((s) => `${s.id}:${s.index}`)).toEqual(['s2:1', 's1:2', 's3:3']);
+    });
+    // 仅一步可撤销（若重复入栈会变 2 步）。
+    expect(screen.getByRole('button', { name: '撤销上一步结构操作，当前 1 步可撤销' })).toBeTruthy();
+  });
+
   it('disables keyboard reorder at list boundaries and while the list is busy', async () => {
     renderWithProjectStore(makeProject(), (project) => (
       <ShotList project={project} busy={false} persistApiKey />

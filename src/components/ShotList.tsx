@@ -201,6 +201,26 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
       aliveRef.current = false;
     };
   }, []);
+  // 键盘重排：单飞锁防快速连击用旧 ordered 闭包算错顺序/重复入撤销栈（Kimi P2）。
+  const [moving, setMoving] = useState(false);
+  const movingRef = useRef(false);
+  // 重排后焦点恢复：按钮在新位置重建会丢焦点到 body，记录最后移动的镜头+方向，渲染后 focus（Kimi P2）。
+  const listRef = useRef<HTMLDivElement>(null);
+  const [focusAfterMove, setFocusAfterMove] = useState<{ id: string; dir: 'up' | 'down' } | null>(null);
+  useEffect(() => {
+    if (!focusAfterMove) return;
+    const root = listRef.current;
+    if (root) {
+      const pick = (dir: 'up' | 'down') =>
+        root.querySelector<HTMLButtonElement>(`[data-move="${dir}"][data-shot="${focusAfterMove.id}"]`);
+      // 优先聚焦同向按钮；若移到边界已禁用，则退回反向按钮，保证焦点不掉回 body。
+      const preferred = pick(focusAfterMove.dir);
+      const fallback = pick(focusAfterMove.dir === 'up' ? 'down' : 'up');
+      const target = preferred && !preferred.disabled ? preferred : fallback;
+      target?.focus();
+    }
+    setFocusAfterMove(null);
+  }, [focusAfterMove]);
 
   // 不在 0 镜头时返回 null：删到空仍需保留「插入/撤销」入口，避免删空后无法恢复（对抗自检）。
   const ordered = [...project.shots].sort((a, b) => a.index - b.index);
@@ -322,9 +342,24 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
   }
 
   async function onMove(shotId: string, toIndex: number) {
-    if (disabled) return;
+    // movingRef 同步拦截快速连击：用当前 render 的 ordered，避免第二次基于旧闭包算错（Kimi P2）。
+    if (disabled || movingRef.current) return;
+    movingRef.current = true;
+    setMoving(true);
     setNotice(null);
-    await applyShots(ordered, moveShot(ordered, shotId, toIndex));
+    try {
+      await applyShots(ordered, moveShot(ordered, shotId, toIndex));
+    } finally {
+      movingRef.current = false;
+      setMoving(false);
+    }
+  }
+
+  // 键盘重排：移动并在重排后恢复焦点（拖拽不需要焦点恢复，仅键盘按钮用）。
+  async function onKeyboardMove(shotId: string, toIndex: number, dir: 'up' | 'down') {
+    if (disabled || movingRef.current) return;
+    await onMove(shotId, toIndex);
+    setFocusAfterMove({ id: shotId, dir });
   }
 
   async function onInsert(arrayIndex: number, desc: string) {
@@ -416,7 +451,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
       {notice && <p className="text-xs text-gray-600">{notice}</p>}
 
       <InsertBar onInsert={(d) => onInsert(0, d)} disabled={disabled} />
-      <div role="list" aria-label="分镜列表" className="flex flex-col gap-3">
+      <div ref={listRef} role="list" aria-label="分镜列表" className="flex flex-col gap-3">
         {ordered.map((s, i) => (
           <div key={s.id} role="listitem" className="flex flex-col gap-3">
             <div
@@ -435,18 +470,22 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
               <div className="mb-1 flex items-center justify-end gap-1">
                 <button
                   type="button"
+                  data-move="up"
+                  data-shot={s.id}
                   aria-label={`上移 镜头 ${s.index}`}
-                  onClick={() => void onMove(s.id, i - 1)}
-                  disabled={disabled || i === 0}
+                  onClick={() => void onKeyboardMove(s.id, i - 1, 'up')}
+                  disabled={disabled || moving || i === 0}
                   className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50 disabled:opacity-50"
                 >
                   上移
                 </button>
                 <button
                   type="button"
+                  data-move="down"
+                  data-shot={s.id}
                   aria-label={`下移 镜头 ${s.index}`}
-                  onClick={() => void onMove(s.id, i + 1)}
-                  disabled={disabled || i === ordered.length - 1}
+                  onClick={() => void onKeyboardMove(s.id, i + 1, 'down')}
+                  disabled={disabled || moving || i === ordered.length - 1}
                   className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50 disabled:opacity-50"
                 >
                   下移
