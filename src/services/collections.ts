@@ -23,6 +23,10 @@ interface Store<T> {
   items: T[];
 }
 
+export interface CollectionOptions<T extends CollectionRecord> {
+  normalize?: (raw: unknown) => T | null;
+}
+
 // 锁按 storageKey 共享（而非按实例）：同一 key 即便有多个 createLocalCollection 实例，
 // 也走同一条串行链，杜绝并发 RMW 丢更新（Codex P2）。
 const keyLocks = new Map<string, Promise<unknown>>();
@@ -48,13 +52,33 @@ export interface LocalCollection<T extends CollectionRecord> {
 
 export function createLocalCollection<T extends CollectionRecord>(
   storageKey: string,
+  options: CollectionOptions<T> = {},
 ): LocalCollection<T> {
   const withLock = <R>(fn: () => Promise<R>): Promise<R> => withKeyLock(storageKey, fn);
+
+  function withRecordDefaults(raw: object): CollectionRecord {
+    const record = raw as Partial<CollectionRecord>;
+    return {
+      id: typeof record.id === 'string' && record.id ? record.id : genId(),
+      createdAt: typeof record.createdAt === 'number' && Number.isFinite(record.createdAt) ? record.createdAt : 0,
+      updatedAt: typeof record.updatedAt === 'number' && Number.isFinite(record.updatedAt) ? record.updatedAt : 0,
+    };
+  }
 
   async function read(): Promise<T[]> {
     const got = await chrome.storage.local.get(storageKey);
     const store = got[storageKey] as Store<T> | undefined;
-    return Array.isArray(store?.items) ? store.items : [];
+    if (!Array.isArray(store?.items)) return [];
+    if (!options.normalize) return store.items;
+
+    const items: T[] = [];
+    for (const raw of store.items) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+      const withRecord = { ...raw, ...withRecordDefaults(raw) };
+      const normalized = options.normalize(withRecord);
+      if (normalized) items.push({ ...normalized, ...withRecordDefaults(normalized) });
+    }
+    return items;
   }
 
   async function write(items: T[]): Promise<Result<void>> {

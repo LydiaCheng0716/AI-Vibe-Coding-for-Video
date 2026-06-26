@@ -14,6 +14,7 @@ import {
   type Transition,
 } from '../core/models';
 import { defaultSettings } from '../core/defaults';
+import { normalizeProject } from '../core/migrations';
 import { reinjectCharacterConsistency } from '../core/characters';
 import { reinjectGlobalStyle } from '../core/style';
 
@@ -81,8 +82,7 @@ export async function saveSettings(settings: Settings): Promise<Result<void>> {
 // ---- 当前分镜项目（TASK-003/004/005/006/007/008 共用）----
 
 export async function getCurrentProject(): Promise<Project | null> {
-  const p = await read<Project>(STORAGE_KEYS.currentProject);
-  return p ?? null;
+  return normalizeProject(await read<unknown>(STORAGE_KEYS.currentProject));
 }
 
 // 串行化所有对 currentProject 的「读-改-写」与整写，避免并发保存互相覆盖（kimi HIGH：RMW 竞态）。

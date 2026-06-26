@@ -14,6 +14,7 @@ import {
   replaceShot,
 } from '../../src/services/storage';
 import { defaultSettings, defaultParams } from '../../src/core/defaults';
+import { STORAGE_KEYS } from '../../src/core/config';
 import { emptyProfile } from '../../src/core/characterProfile';
 import type { Character, Project, Shot } from '../../src/core/models';
 
@@ -101,6 +102,26 @@ describe('storage: write failure → STORAGE_WRITE_FAILED', () => {
 });
 
 describe('storage: updateShotPrompt (TASK-006)', () => {
+  it('getCurrentProject 读旧 project 时归一补齐字段且不回写', async () => {
+    const oldProject = {
+      story: '旧格式故事',
+      params: { outputLanguage: 'en' },
+      characters: [],
+    };
+    await chrome.storage.local.set({ [STORAGE_KEYS.currentProject]: oldProject });
+
+    const got = await getCurrentProject();
+
+    expect(got).toMatchObject({
+      schemaVersion: 1,
+      story: '旧格式故事',
+      params: { ...defaultParams(), outputLanguage: 'en' },
+      characters: [],
+      shots: [],
+    });
+    expect((await chrome.storage.local.get(STORAGE_KEYS.currentProject))[STORAGE_KEYS.currentProject]).toEqual(oldProject);
+  });
+
   it('只改目标镜头 prompt 并置 editedByUser=true，其他不变', async () => {
     await saveCurrentProject(mkProject());
     const r = await updateShotPrompt('s2', '新提示词');

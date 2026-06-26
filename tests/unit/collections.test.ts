@@ -11,6 +11,34 @@ function mk() {
 }
 
 describe('createLocalCollection', () => {
+  it('传 normalize 时补齐旧记录元字段，并丢弃脏项', async () => {
+    const c = createLocalCollection<Item>('normalizedColl', {
+      normalize(raw) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+        const item = raw as Partial<Item>;
+        if (typeof item.name !== 'string') return null;
+        return item as Item;
+      },
+    });
+    await chrome.storage.local.set({
+      normalizedColl: {
+        items: [{ name: 'old' }, { id: 'bad', createdAt: 1, updatedAt: 1 }],
+      },
+    });
+
+    const list = await c.list();
+
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ name: 'old', createdAt: 0, updatedAt: 0 });
+    expect(list[0]?.id).toBeTruthy();
+  });
+
+  it('不传 normalize 时维持原样读取', async () => {
+    await chrome.storage.local.set({ testColl: { items: [{ name: 'raw' }] } });
+
+    expect(await mk().list()).toEqual([{ name: 'raw' }]);
+  });
+
   it('add 赋 id/时间戳并可 list', async () => {
     const c = mk();
     const r = await c.add({ name: 'a' });
