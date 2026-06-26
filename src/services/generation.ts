@@ -123,6 +123,66 @@ function providerErr(e: unknown): Result<never> {
   return err('NETWORK_ERROR', '网络异常，请稍后重试。', true);
 }
 
+interface OneShotPrompt {
+  system: string;
+  user: string;
+}
+
+interface OneShotContext {
+  settings: Settings;
+}
+
+export interface RunOneShotLlmOptions<T> {
+  deps: PreflightDeps;
+  apiKey?: string;
+  buildPrompt: (ctx: OneShotContext) => OneShotPrompt;
+  parse: (raw: string, ctx: OneShotContext) => Result<T>;
+  timeoutMs: number;
+  maxTokens: number;
+  retryOpts?: RetryOptions;
+  /** false = 单次 attempt（不加锁不重试），供既有 *Attempt 导出复用。默认 true。 */
+  lock?: boolean;
+  /** 输入级校验，运行在每次 attempt 内、preflight 前。 */
+  validate?: () => Result<void> | undefined;
+}
+
+/**
+ * 单发 LLM 通用管线：可作为一次 attempt，也可默认包裹全局锁 + 退避重试。
+ * 每次重试都会重新跑 validate/preflight，与既有 withRetry(() => *Attempt()) 语义一致。
+ */
+export async function runOneShotLlm<T>(opts: RunOneShotLlmOptions<T>): Promise<Result<T>> {
+  const attempt = async (): Promise<Result<T>> => {
+    const validated = opts.validate?.();
+    if (validated && !validated.ok) return validated;
+
+    const pre = await preflightProvider(opts.deps, opts.apiKey);
+    if (!pre.ok) return pre;
+    const { settings, apiKey } = pre.data;
+    const { system, user } = opts.buildPrompt({ settings });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs);
+    let raw: string;
+    try {
+      raw = await opts.deps.createProvider(settings.provider).complete({
+        system,
+        user,
+        model: settings.provider.model,
+        apiKey,
+        maxTokens: opts.maxTokens,
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      return providerErr(e);
+    } finally {
+      clearTimeout(timer);
+    }
+    return opts.parse(raw, { settings });
+  };
+
+  if (opts.lock === false) return attempt();
+  return withLlmLock(() => withRetry(attempt, opts.retryOpts));
+}
+
 /**
  * 单次生成尝试：前置校验 → prompt → provider → ADR-6 解析，**不落库**。
  * 这是给 TASK-009 包裹（全局锁 + 失败退避重试）的最小单元——重试只会重发 LLM 调用，
@@ -399,33 +459,7 @@ export async function generateTransitionAttempt(
   input: TransitionInput,
   deps: PreflightDeps = realDeps,
 ): Promise<Result<Transition>> {
-  const pre = await preflightProvider(deps, input.apiKey);
-  if (!pre.ok) return pre;
-  const { settings, apiKey } = pre.data;
-  const lang = input.lang ?? settings.params.outputLanguage;
-
-  const { system, user } = buildTransitionPrompt(input.prevShot, input.nextShot, input.type, lang);
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), CHARACTER_SUGGEST_TIMEOUT_MS);
-  let raw: string;
-  try {
-    raw = await deps.createProvider(settings.provider).complete({
-      system,
-      user,
-      model: settings.provider.model,
-      apiKey,
-      maxTokens: CHARACTER_SUGGEST_MAX_TOKENS,
-      signal: ctrl.signal,
-    });
-  } catch (e) {
-    return providerErr(e);
-  } finally {
-    clearTimeout(timer);
-  }
-
-  const parsed = parseTransition(raw);
-  if (!parsed) return err('BAD_RESPONSE_FORMAT', '转场生成结果异常，请重试。');
-  return ok({ type: input.type, note: parsed.note, ...(parsed.noteEn ? { noteEn: parsed.noteEn } : {}) });
+  return runTransition(input, deps, false);
 }
 
 /** 生成转场建议（与分镜/BGM 共享全局锁 + 退避重试）。UI 成功后调 project store 落库。 */
@@ -434,7 +468,35 @@ export async function generateTransition(
   deps: PreflightDeps = realDeps,
   retryOpts: RetryOptions = {},
 ): Promise<Result<Transition>> {
-  return withLlmLock(() => withRetry(() => generateTransitionAttempt(input, deps), retryOpts));
+  return runTransition(input, deps, true, retryOpts);
+}
+
+function runTransition(
+  input: TransitionInput,
+  deps: PreflightDeps,
+  lock: boolean,
+  retryOpts?: RetryOptions,
+): Promise<Result<Transition>> {
+  return runOneShotLlm({
+    deps,
+    apiKey: input.apiKey,
+    lock,
+    retryOpts,
+    timeoutMs: CHARACTER_SUGGEST_TIMEOUT_MS,
+    maxTokens: CHARACTER_SUGGEST_MAX_TOKENS,
+    buildPrompt: ({ settings }) =>
+      buildTransitionPrompt(
+        input.prevShot,
+        input.nextShot,
+        input.type,
+        input.lang ?? settings.params.outputLanguage,
+      ),
+    parse: (raw) => {
+      const parsed = parseTransition(raw);
+      if (!parsed) return err('BAD_RESPONSE_FORMAT', '转场生成结果异常，请重试。');
+      return ok({ type: input.type, note: parsed.note, ...(parsed.noteEn ? { noteEn: parsed.noteEn } : {}) });
+    },
+  });
 }
 
 // ---- 首帧图像提示词生成（Issue #57）----
@@ -458,36 +520,7 @@ export async function generateFirstFrameAttempt(
   input: FirstFrameInput,
   deps: PreflightDeps = realDeps,
 ): Promise<Result<FirstFrameResult>> {
-  const pre = await preflightProvider(deps, input.apiKey);
-  if (!pre.ok) return pre;
-  const { settings, apiKey } = pre.data;
-  const lang = input.lang ?? settings.params.outputLanguage;
-
-  const { system, user } = buildFirstFramePrompt(input.shot, input.characters, input.globalStyle, lang);
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), STORYBOARD_TIMEOUT_MS);
-  let raw: string;
-  try {
-    raw = await deps.createProvider(settings.provider).complete({
-      system,
-      user,
-      model: settings.provider.model,
-      apiKey,
-      maxTokens: MAX_OUTPUT_TOKENS,
-      signal: ctrl.signal,
-    });
-  } catch (e) {
-    return providerErr(e);
-  } finally {
-    clearTimeout(timer);
-  }
-
-  const parsed = parseFirstFrame(raw);
-  if (!parsed) return err('BAD_RESPONSE_FORMAT', '首帧提示词生成结果异常，请重试。');
-  return ok({
-    firstFramePrompt: parsed.firstFrame,
-    ...(parsed.firstFrameEn ? { firstFramePromptEn: parsed.firstFrameEn } : {}),
-  });
+  return runFirstFrame(input, deps, false);
 }
 
 /** 生成首帧图像提示词（与分镜/BGM 共享全局锁 + 退避重试）。UI 成功后调 project store 落库。 */
@@ -496,7 +529,38 @@ export async function generateFirstFrame(
   deps: PreflightDeps = realDeps,
   retryOpts: RetryOptions = {},
 ): Promise<Result<FirstFrameResult>> {
-  return withLlmLock(() => withRetry(() => generateFirstFrameAttempt(input, deps), retryOpts));
+  return runFirstFrame(input, deps, true, retryOpts);
+}
+
+function runFirstFrame(
+  input: FirstFrameInput,
+  deps: PreflightDeps,
+  lock: boolean,
+  retryOpts?: RetryOptions,
+): Promise<Result<FirstFrameResult>> {
+  return runOneShotLlm({
+    deps,
+    apiKey: input.apiKey,
+    lock,
+    retryOpts,
+    timeoutMs: STORYBOARD_TIMEOUT_MS,
+    maxTokens: MAX_OUTPUT_TOKENS,
+    buildPrompt: ({ settings }) =>
+      buildFirstFramePrompt(
+        input.shot,
+        input.characters,
+        input.globalStyle,
+        input.lang ?? settings.params.outputLanguage,
+      ),
+    parse: (raw) => {
+      const parsed = parseFirstFrame(raw);
+      if (!parsed) return err('BAD_RESPONSE_FORMAT', '首帧提示词生成结果异常，请重试。');
+      return ok({
+        firstFramePrompt: parsed.firstFrame,
+        ...(parsed.firstFrameEn ? { firstFramePromptEn: parsed.firstFrameEn } : {}),
+      });
+    },
+  });
 }
 
 // ---- 轻量翻译（Issue #53：双语自动同步）----
@@ -512,33 +576,7 @@ export async function translateTextAttempt(
   input: TranslateInput,
   deps: PreflightDeps = realDeps,
 ): Promise<Result<string>> {
-  if (!input.text.trim()) return err('NO_GENERATION_INPUT', '没有可翻译的内容。');
-  const pre = await preflightProvider(deps, input.apiKey);
-  if (!pre.ok) return pre;
-  const { settings, apiKey } = pre.data;
-
-  const { system, user } = buildTranslatePrompt(input.text, input.targetLang);
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), CHARACTER_SUGGEST_TIMEOUT_MS);
-  let raw: string;
-  try {
-    raw = await deps.createProvider(settings.provider).complete({
-      system,
-      user,
-      model: settings.provider.model,
-      apiKey,
-      maxTokens: MAX_OUTPUT_TOKENS,
-      signal: ctrl.signal,
-    });
-  } catch (e) {
-    return providerErr(e);
-  } finally {
-    clearTimeout(timer);
-  }
-
-  const out = raw.trim();
-  if (!out) return err('BAD_RESPONSE_FORMAT', '翻译结果异常，请重试。');
-  return ok(out);
+  return runTranslateText(input, deps, false);
 }
 
 /** 翻译文本（与生成/重写共享全局锁 + 退避重试）。失败由 UI 保留用户输入、提示重试。 */
@@ -547,5 +585,29 @@ export async function translateText(
   deps: PreflightDeps = realDeps,
   retryOpts: RetryOptions = {},
 ): Promise<Result<string>> {
-  return withLlmLock(() => withRetry(() => translateTextAttempt(input, deps), retryOpts));
+  return runTranslateText(input, deps, true, retryOpts);
+}
+
+function runTranslateText(
+  input: TranslateInput,
+  deps: PreflightDeps,
+  lock: boolean,
+  retryOpts?: RetryOptions,
+): Promise<Result<string>> {
+  return runOneShotLlm({
+    deps,
+    apiKey: input.apiKey,
+    lock,
+    retryOpts,
+    timeoutMs: CHARACTER_SUGGEST_TIMEOUT_MS,
+    maxTokens: MAX_OUTPUT_TOKENS,
+    validate: () =>
+      input.text.trim() ? undefined : err('NO_GENERATION_INPUT', '没有可翻译的内容。'),
+    buildPrompt: () => buildTranslatePrompt(input.text, input.targetLang),
+    parse: (raw) => {
+      const out = raw.trim();
+      if (!out) return err('BAD_RESPONSE_FORMAT', '翻译结果异常，请重试。');
+      return ok(out);
+    },
+  });
 }

@@ -6,6 +6,7 @@ import { rewriteShot, generateTransition } from '../services/generation';
 import { TRANSITION_TYPES, transitionLabel } from '../core/transitions';
 import { copyToClipboard } from '../services/clipboard';
 import { useProjectStore } from '../sidepanel/projectStore';
+import { OneTimeKeyInput, useOneTimeKey, type OneTimeKeyState } from './OneTimeKeyInput';
 
 interface Props {
   project: Project;
@@ -46,13 +47,13 @@ function TransitionBar({
   next,
   lang,
   busy,
-  apiKey,
+  oneTimeKey,
 }: {
   prev: Shot;
   next: Shot;
   lang: Project['params']['outputLanguage'];
   busy: boolean;
-  apiKey?: string;
+  oneTimeKey: OneTimeKeyState;
 }) {
   const { updateShotTransition } = useProjectStore();
   const t = prev.transitionToNext;
@@ -67,16 +68,20 @@ function TransitionBar({
     if (busy || gen) return;
     setGen(true);
     setNotice(null);
-    const r = await generateTransition({ prevShot: prev, nextShot: next, type, lang, apiKey });
-    setGen(false);
-    if (!r.ok) {
-      setNotice(r.error.message);
-      return;
+    try {
+      const r = await generateTransition({ prevShot: prev, nextShot: next, type, lang, apiKey: oneTimeKey.apiKey });
+      if (!r.ok) {
+        setNotice(r.error.message);
+        return;
+      }
+      setNote(r.data.note);
+      setNoteEn(r.data.noteEn ?? '');
+      const save = await updateShotTransition(prev.id, r.data);
+      if (!save.ok) setNotice(save.error.message);
+    } finally {
+      if (!oneTimeKey.persistApiKey) oneTimeKey.clear();
+      setGen(false);
     }
-    setNote(r.data.note);
-    setNoteEn(r.data.noteEn ?? '');
-    const save = await updateShotTransition(prev.id, r.data);
-    if (!save.ok) setNotice(save.error.message);
   }
 
   async function onSaveNote() {
@@ -167,7 +172,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
   const [history, setHistory] = useState<Shot[][]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [tempKey, setTempKey] = useState('');
+  const oneTimeKey = useOneTimeKey({ persistApiKey });
   const [working, setWorking] = useState(false);
 
   // 不在 0 镜头时返回 null：删到空仍需保留「插入/撤销」入口，避免删空后无法恢复（对抗自检）。
@@ -208,8 +213,13 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
       if (!updated) return;
       // 有描述 → 复用 #30 重写管线即时生成填充（注入锁定角色 + 全局风格）。
       if (desc.trim()) {
-        const apiKey = persistApiKey ? undefined : tempKey.trim() || undefined;
-        const r = await rewriteShot({ project: updated, shotId: blank.id, mode: 'feedback', feedback: desc, apiKey });
+        const r = await rewriteShot({
+          project: updated,
+          shotId: blank.id,
+          mode: 'feedback',
+          feedback: desc,
+          apiKey: oneTimeKey.apiKey,
+        });
         if (r.ok) {
           const saved = await replaceShot(blank.id, r.data);
           if (!saved.ok) setNotice(saved.error.message);
@@ -218,6 +228,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
         }
       }
     } finally {
+      if (desc.trim() && !oneTimeKey.persistApiKey) oneTimeKey.clear();
       setWorking(false);
     }
   }
@@ -249,16 +260,11 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
           </button>
         )}
       </div>
-      {!persistApiKey && (
-        <input
-          type="password"
-          autoComplete="off"
-          className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-          placeholder="一次性 API Key（已关闭保存，用于插入即时生成，不落盘）"
-          value={tempKey}
-          onChange={(e) => setTempKey(e.target.value)}
-        />
-      )}
+      <OneTimeKeyInput
+        oneTimeKey={oneTimeKey}
+        className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
+        placeholder="一次性 API Key（已关闭保存，用于插入即时生成，不落盘）"
+      />
       {notice && <p className="text-xs text-gray-600">{notice}</p>}
 
       <InsertBar onInsert={(d) => onInsert(0, d)} disabled={disabled} />
@@ -290,7 +296,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
               next={ordered[i + 1]}
               lang={project.params.outputLanguage}
               busy={busy}
-              apiKey={persistApiKey ? undefined : tempKey.trim() || undefined}
+              oneTimeKey={oneTimeKey}
             />
           )}
           <InsertBar onInsert={(d) => onInsert(i + 1, d)} disabled={disabled} />
