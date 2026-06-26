@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Project, Shot } from '../core/models';
 import { rewriteShot, generateFirstFrame, translateText } from '../services/generation';
 import type { RewriteMode } from '../prompts/rewrite';
@@ -22,6 +22,139 @@ interface Props {
   persistApiKey: boolean;
   /** 删除本镜头（Issue #56；确认由父级处理）。 */
   onDelete?: () => void;
+}
+
+interface CopyIconButtonProps {
+  text: string;
+  label: string;
+  title: string;
+  copiedTitle: string;
+  className?: string;
+  children?: ReactNode;
+  onCopied?: () => void;
+  onError: (message: string) => void;
+}
+
+function CopyIconButton({
+  text,
+  label,
+  title,
+  copiedTitle,
+  className = '',
+  children,
+  onCopied,
+  onError,
+}: CopyIconButtonProps) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  async function onClick() {
+    const r = await copyToClipboard(text);
+    if (!r.ok) {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+      setCopied(false);
+      onError(r.error.message);
+      return;
+    }
+    onCopied?.();
+    setCopied(true);
+    if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={copied ? copiedTitle : title}
+      onClick={() => void onClick()}
+      className={`inline-flex h-7 min-w-7 items-center justify-center rounded border border-gray-200 bg-white/95 px-1.5 text-[11px] text-gray-600 shadow-sm hover:border-blue-300 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200 ${className}`}
+    >
+      {copied ? (
+        <span className="whitespace-nowrap text-green-700">{copiedTitle}</span>
+      ) : (
+        children ?? (
+          <svg aria-hidden="true" viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none">
+            <path
+              d="M7 6.5A1.5 1.5 0 0 1 8.5 5h6A1.5 1.5 0 0 1 16 6.5v8a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 7 14.5v-8Z"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M4 11.5v-6A1.5 1.5 0 0 1 5.5 4h6"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        )
+      )}
+    </button>
+  );
+}
+
+function PromptCopyBox({
+  copyText,
+  label,
+  title,
+  copiedTitle,
+  onError,
+  onCopied,
+  className = '',
+  children,
+}: {
+  copyText: string;
+  label: string;
+  title: string;
+  copiedTitle: string;
+  onError: (message: string) => void;
+  onCopied: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`relative ${className}`}>
+      <CopyIconButton
+        text={copyText}
+        label={label}
+        title={title}
+        copiedTitle={copiedTitle}
+        onError={onError}
+        onCopied={onCopied}
+        className="absolute right-1.5 top-1.5 z-10"
+      />
+      {children}
+    </div>
+  );
+}
+
+function buildShotCopyText({
+  shot,
+  title,
+  prompt,
+  promptEn,
+  outputLanguage,
+}: {
+  shot: Shot;
+  title: string;
+  prompt: string;
+  promptEn?: string;
+  outputLanguage: Project['params']['outputLanguage'];
+}) {
+  const sections: string[][] = [[title]];
+  const primaryLabel = shot.promptEn !== undefined || outputLanguage !== 'en' ? '[ZH]' : '[EN]';
+  sections.push([primaryLabel, prompt]);
+  if (shot.promptEn !== undefined) sections.push(['[EN]', promptEn ?? '']);
+  if (shot.firstFramePrompt) sections.push(['[First Frame ZH]', shot.firstFramePrompt]);
+  if (shot.firstFramePromptEn) sections.push(['[First Frame EN]', shot.firstFramePromptEn]);
+  return sections.map((section) => section.join('\n')).join('\n\n');
 }
 
 export default function ShotCard({ shot, project, busy, persistApiKey, onDelete }: Props) {
@@ -107,17 +240,6 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
     setDraftEn(shot.promptEn ?? '');
     setNotice(null);
     setEditing(true);
-  }
-
-  async function onCopy(text: string) {
-    const r = await copyToClipboard(text);
-    if (r.ok) {
-      const copied = t('shotCard.copiedPrompt');
-      setNotice(copied);
-      window.setTimeout(() => setNotice((n) => (n === copied ? null : n)), 2000);
-    } else {
-      setNotice(r.error.message);
-    }
   }
 
   // 单镜头重写（regenerate / feedback / params）：成功后压入撤销栈、落库、上提。复用同一路径。
@@ -242,13 +364,19 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
     }
   }
 
-  async function onCopyFirstFrame(text: string) {
-    const r = await copyToClipboard(text);
-    setNotice(r.ok ? t('shotCard.firstFrameCopied') : r.error.message);
-  }
-
   const disabled = busy || rewriting;
   const lang = project.params.outputLanguage;
+  const copyTitle = t('shotCard.copyTooltip');
+  const copiedTitle = t('shotCard.copiedInline');
+  const clearCopyNotice = () => setNotice(null);
+  const showCopyError = (message: string) => setNotice(message);
+  const fullCopyText = buildShotCopyText({
+    shot,
+    title: t('shotCard.title', { index: shot.index }),
+    prompt: editing ? draft : shot.prompt,
+    promptEn: editing ? draftEn : shot.promptEn,
+    outputLanguage: lang,
+  });
 
   return (
     <div className="rounded border border-gray-200 p-3">
@@ -258,35 +386,17 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
           {shot.editedByUser && <span className="ml-1 text-amber-600">{t('shotCard.edited')}</span>}
         </span>
         <div className="flex gap-2">
-          {shot.promptEn ? (
-            <>
-              <button
-                type="button"
-                aria-label={t('shotCard.copyZhAria', { index: shot.index })}
-                onClick={() => onCopy(shot.prompt)}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                {t('shotCard.copyZh')}
-              </button>
-              <button
-                type="button"
-                aria-label={t('shotCard.copyEnAria', { index: shot.index })}
-                onClick={() => onCopy(shot.promptEn ?? '')}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                {t('shotCard.copyEn')}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              aria-label={t('shotCard.copyAria', { index: shot.index })}
-              onClick={() => onCopy(shot.prompt)}
-              className="text-xs text-blue-600 hover:underline"
-            >
-              {t('common.copy')}
-            </button>
-          )}
+          <CopyIconButton
+            text={fullCopyText}
+            label={t('shotCard.copyFullAria', { index: shot.index })}
+            title={copyTitle}
+            copiedTitle={t('shotCard.copyFullCopied')}
+            onError={showCopyError}
+            onCopied={clearCopyNotice}
+            className="h-auto min-w-0 px-2 py-1 text-xs shadow-none"
+          >
+            {t('shotCard.copyFull')}
+          </CopyIconButton>
           {!editing && (
             <button
               type="button"
@@ -380,23 +490,45 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
           {shot.promptEn !== undefined && (
             <span className="text-[11px] font-medium text-gray-500">{t('common.zh')}</span>
           )}
-          <textarea
-            aria-label={t('shotCard.editZhAria', { index: shot.index })}
-            className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 text-xs outline-none focus:border-blue-500"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void onTranslate('zh')}
-          />
+          <PromptCopyBox
+            copyText={draft}
+            label={
+              shot.promptEn !== undefined
+                ? t('shotCard.copyZhAria', { index: shot.index })
+                : t('shotCard.copyAria', { index: shot.index })
+            }
+            title={copyTitle}
+            copiedTitle={copiedTitle}
+            onError={showCopyError}
+            onCopied={clearCopyNotice}
+          >
+            <textarea
+              aria-label={t('shotCard.editZhAria', { index: shot.index })}
+              className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 pr-16 text-xs outline-none focus:border-blue-500"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => void onTranslate('zh')}
+            />
+          </PromptCopyBox>
           {shot.promptEn !== undefined && (
             <>
               <span className="text-[11px] font-medium text-gray-500">{t('common.en')}</span>
-              <textarea
-                aria-label={t('shotCard.editEnAria', { index: shot.index })}
-                className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 text-xs outline-none focus:border-blue-500"
-                value={draftEn}
-                onChange={(e) => setDraftEn(e.target.value)}
-                onBlur={() => void onTranslate('en')}
-              />
+              <PromptCopyBox
+                copyText={draftEn}
+                label={t('shotCard.copyEnAria', { index: shot.index })}
+                title={copyTitle}
+                copiedTitle={copiedTitle}
+                onError={showCopyError}
+                onCopied={clearCopyNotice}
+              >
+                <textarea
+                  aria-label={t('shotCard.editEnAria', { index: shot.index })}
+                  className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 pr-16 text-xs outline-none focus:border-blue-500"
+                  value={draftEn}
+                  onChange={(e) => setDraftEn(e.target.value)}
+                  onBlur={() => void onTranslate('en')}
+                />
+              </PromptCopyBox>
             </>
           )}
           <div className="flex gap-2">
@@ -421,21 +553,49 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
         <div className="mt-2 flex flex-col gap-2">
           <div>
             <span className="text-[11px] font-medium text-gray-500">{t('common.zh')}</span>
-            <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs text-gray-800">
-              {shot.prompt}
-            </pre>
+            <PromptCopyBox
+              copyText={shot.prompt}
+              label={t('shotCard.copyZhAria', { index: shot.index })}
+              title={copyTitle}
+              copiedTitle={copiedTitle}
+              onError={showCopyError}
+              onCopied={clearCopyNotice}
+            >
+              <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 pr-16 text-xs text-gray-800">
+                {shot.prompt}
+              </pre>
+            </PromptCopyBox>
           </div>
           <div>
             <span className="text-[11px] font-medium text-gray-500">{t('common.en')}</span>
-            <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs text-gray-800">
-              {shot.promptEn}
-            </pre>
+            <PromptCopyBox
+              copyText={shot.promptEn}
+              label={t('shotCard.copyEnAria', { index: shot.index })}
+              title={copyTitle}
+              copiedTitle={copiedTitle}
+              onError={showCopyError}
+              onCopied={clearCopyNotice}
+            >
+              <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 pr-16 text-xs text-gray-800">
+                {shot.promptEn}
+              </pre>
+            </PromptCopyBox>
           </div>
         </div>
       ) : (
-        <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs text-gray-800">
-          {shot.prompt}
-        </pre>
+        <PromptCopyBox
+          copyText={shot.prompt}
+          label={t('shotCard.copyAria', { index: shot.index })}
+          title={copyTitle}
+          copiedTitle={copiedTitle}
+          onError={showCopyError}
+          onCopied={clearCopyNotice}
+          className="mt-2"
+        >
+          <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 pr-16 text-xs text-gray-800">
+            {shot.prompt}
+          </pre>
+        </PromptCopyBox>
       )}
 
       {/* 单镜头迭代（Issue #30）：重新生成 / 反馈式优化 / 撤销 */}
@@ -507,32 +667,42 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             >
               {firstFraming ? t('common.generating') : shot.firstFramePrompt ? t('common.regenerate') : t('shotCard.generateFirstFrame')}
             </button>
-            {shot.firstFramePrompt && (
-              <button
-                type="button"
-                aria-label={t('shotCard.copyZhFirstFrameAria', { index: shot.index })}
-                onClick={() => onCopyFirstFrame(shot.firstFramePrompt ?? '')}
-                className="text-[11px] text-blue-600 hover:underline"
-              >
-                {t('shotCard.copyZh')}
-              </button>
-            )}
-            {shot.firstFramePromptEn && (
-              <button
-                type="button"
-                aria-label={t('shotCard.copyEnFirstFrameAria', { index: shot.index })}
-                onClick={() => onCopyFirstFrame(shot.firstFramePromptEn ?? '')}
-                className="text-[11px] text-blue-600 hover:underline"
-              >
-                {t('shotCard.copyEn')}
-              </button>
-            )}
           </div>
           {shot.firstFramePrompt && (
-            <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-[11px] text-gray-700">
-              {shot.firstFramePrompt}
-              {shot.firstFramePromptEn ? `\n\n[EN] ${shot.firstFramePromptEn}` : ''}
-            </pre>
+            <div className="flex flex-col gap-1">
+              {shot.firstFramePromptEn && (
+                <span className="text-[11px] font-medium text-gray-500">{t('common.zh')}</span>
+              )}
+              <PromptCopyBox
+                copyText={shot.firstFramePrompt}
+                label={t('shotCard.copyZhFirstFrameAria', { index: shot.index })}
+                title={copyTitle}
+                copiedTitle={copiedTitle}
+                onError={showCopyError}
+                onCopied={clearCopyNotice}
+              >
+                <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 pr-16 text-[11px] text-gray-700">
+                  {shot.firstFramePrompt}
+                </pre>
+              </PromptCopyBox>
+            </div>
+          )}
+          {shot.firstFramePromptEn && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-gray-500">{t('common.en')}</span>
+              <PromptCopyBox
+                copyText={shot.firstFramePromptEn}
+                label={t('shotCard.copyEnFirstFrameAria', { index: shot.index })}
+                title={copyTitle}
+                copiedTitle={copiedTitle}
+                onError={showCopyError}
+                onCopied={clearCopyNotice}
+              >
+                <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 pr-16 text-[11px] text-gray-700">
+                  {shot.firstFramePromptEn}
+                </pre>
+              </PromptCopyBox>
+            </div>
           )}
         </div>
       )}
