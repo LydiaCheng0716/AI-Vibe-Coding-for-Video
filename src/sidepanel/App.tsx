@@ -11,16 +11,20 @@ import DraftsPanel from '../components/DraftsPanel';
 import { getSettings } from '../services/storage';
 import { subscribeLlmBusy } from '../services/llmLock';
 import { ProjectStoreProvider, useProjectStore } from './projectStore';
+import { I18nProvider, useI18n } from '../i18n';
 
 export default function App() {
   return (
     <ProjectStoreProvider>
-      <AppContent />
+      <I18nProvider>
+        <AppContent />
+      </I18nProvider>
     </ProjectStoreProvider>
   );
 }
 
 function AppContent() {
+  const { t, setUiLanguage } = useI18n();
   const [showSettings, setShowSettings] = useState(false);
   const [busy, setBusy] = useState(false);
   const { project, projectLoadVersion, loadCurrentProject, replaceProject } = useProjectStore();
@@ -43,7 +47,10 @@ function AppContent() {
     let alive = true;
     getSettings()
       .then((s) => {
-        if (alive) setPersistApiKey(s.persistApiKey);
+        if (alive) {
+          setPersistApiKey(s.persistApiKey);
+          setUiLanguage(s.uiLanguage ?? 'zh');
+        }
       })
       .catch(() => {
         /* 读取失败按默认保存模式 */
@@ -60,7 +67,7 @@ function AppContent() {
           <img src={fireugLogo} alt="FireUG" className="h-7 w-7 shrink-0" />
           <div>
             <h1 className="text-base font-semibold">StoryPop</h1>
-            <p className="text-xs text-gray-500">把故事变成分镜与提示词</p>
+            <p className="text-xs text-gray-500">{t('app.tagline')}</p>
           </div>
         </div>
         <button
@@ -69,7 +76,7 @@ function AppContent() {
           className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
           aria-pressed={showSettings}
         >
-          {showSettings ? '返回' : '设置'}
+          {showSettings ? t('app.back') : t('app.settings')}
         </button>
       </header>
       <main>

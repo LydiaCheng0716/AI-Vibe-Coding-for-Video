@@ -3,19 +3,17 @@ import type { Project } from '../core/models';
 import { exportProject, EXPORT_META, type ExportFormat, type ExportPromptLang } from '../core/export';
 import { copyToClipboard } from '../services/clipboard';
 import { getSettings, updateSettings } from '../services/storage';
+import { useT } from '../i18n';
 
 interface Props {
   project: Project | null;
 }
 
 const FORMATS: ExportFormat[] = ['markdown', 'json', 'plaintext', 'csv', 'platform'];
-const PROMPT_LANGS: { value: ExportPromptLang; label: string }[] = [
-  { value: 'both', label: '中英两版' },
-  { value: 'zh', label: '仅中文' },
-  { value: 'en', label: '仅英文' },
-];
+const PROMPT_LANGS: ExportPromptLang[] = ['both', 'zh', 'en'];
 
 export default function ExportPanel({ project }: Props) {
+  const t = useT();
   const [format, setFormat] = useState<ExportFormat>('markdown');
   const [promptLang, setPromptLang] = useState<ExportPromptLang>('both');
   const [notice, setNotice] = useState<string | null>(null);
@@ -75,7 +73,7 @@ export default function ExportPanel({ project }: Props) {
     const r = exportProject(project, format, promptLang);
     if (!r.ok) return setNotice(r.error.message);
     const c = await copyToClipboard(r.data);
-    setNotice(c.ok ? '已复制导出内容' : c.error.message);
+    setNotice(c.ok ? t('export.copiedContent') : c.error.message);
   }
 
   // 一键复制全部提示词（平台排版，粘贴即用）。
@@ -83,7 +81,7 @@ export default function ExportPanel({ project }: Props) {
     const r = exportProject(project, 'platform', promptLang);
     if (!r.ok) return setNotice(r.error.message);
     const c = await copyToClipboard(r.data);
-    setNotice(c.ok ? '已复制全部提示词' : c.error.message);
+    setNotice(c.ok ? t('export.copiedPrompts') : c.error.message);
   }
 
   function onDownload() {
@@ -102,12 +100,12 @@ export default function ExportPanel({ project }: Props) {
       a.remove();
       URL.revokeObjectURL(url);
     }, 0);
-    setNotice('已开始下载');
+    setNotice(t('export.downloadStarted'));
   }
 
   return (
     <div className="flex flex-col gap-2 border-t border-gray-200 p-3">
-      <h2 className="text-sm font-semibold">导出</h2>
+      <h2 className="text-sm font-semibold">{t('export.title')}</h2>
       <div className="flex items-center gap-2">
         <select
           value={format}
@@ -116,7 +114,7 @@ export default function ExportPanel({ project }: Props) {
         >
           {FORMATS.map((f) => (
             <option key={f} value={f}>
-              {EXPORT_META[f].label}
+              {t(`export.format.${f}`)}
             </option>
           ))}
         </select>
@@ -127,8 +125,8 @@ export default function ExportPanel({ project }: Props) {
             className="rounded border border-gray-300 px-2 py-1 text-xs outline-none focus:border-blue-500"
           >
             {PROMPT_LANGS.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.label}
+              <option key={l} value={l}>
+                {t(`export.promptLang.${l}`)}
               </option>
             ))}
           </select>
@@ -138,14 +136,14 @@ export default function ExportPanel({ project }: Props) {
           onClick={onCopy}
           className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
         >
-          复制
+          {t('common.copy')}
         </button>
         <button
           type="button"
           onClick={onDownload}
           className="rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50"
         >
-          下载
+          {t('export.download')}
         </button>
       </div>
       <button
@@ -153,7 +151,7 @@ export default function ExportPanel({ project }: Props) {
         onClick={onCopyAllPrompts}
         className="self-start rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50"
       >
-        复制全部提示词
+        {t('export.copyAllPrompts')}
       </button>
       {notice && <p className="text-xs text-gray-600">{notice}</p>}
     </div>

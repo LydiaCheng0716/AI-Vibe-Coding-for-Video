@@ -21,6 +21,7 @@ export function defaultSettings(): Settings {
   return {
     params: defaultParams(),
     provider: defaultProvider(),
+    uiLanguage: 'zh',
     persistApiKey: true,
     autoTranslateSync: false,
     exportFormat: 'markdown',

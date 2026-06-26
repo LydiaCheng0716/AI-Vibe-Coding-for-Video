@@ -1,20 +1,22 @@
 import { useEffect, useState } from 'react';
 import type { Settings, VideoModel, OutputLanguage, ShotDurationPref } from '../core/models';
-import { getSettings, saveSettings } from '../services/storage';
+import { getSettings, saveSettings, updateSettings } from '../services/storage';
 import { saveApiKey, getMaskedApiKey, clearApiKey } from '../services/keyVault';
 import { defaultSettings } from '../core/defaults';
 import { originForProvider, hasHostPermission, requestHostPermission } from '../services/permissions';
 import { PROVIDER_PRESETS, applyPreset, presetIdForProvider, getPreset } from '../core/providerPresets';
 import { testConnection } from '../services/connectionTest';
 import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
+import { useI18n, type UiLanguage } from '../i18n';
 
 const VIDEO_MODELS: VideoModel[] = ['generic', 'jimeng', 'keling', 'sora', 'runway'];
 const ASPECTS = ['16:9', '9:16', '1:1'];
 const DURATIONS: ShotDurationPref[] = ['short', 'medium', 'long'];
 const LANGS: OutputLanguage[] = ['zh', 'en', 'zh-en'];
-const LANG_LABELS: Record<OutputLanguage, string> = { zh: '中文', en: 'English', 'zh-en': '中英双语' };
+const UI_LANGS: UiLanguage[] = ['zh', 'en'];
 
 export default function SettingsPanel() {
+  const { t, uiLanguage, setUiLanguage } = useI18n();
   const [settings, setSettings] = useState<Settings>(defaultSettings());
   const oneTimeKey = useOneTimeKey({ persistApiKey: settings.persistApiKey });
   const [maskedKey, setMaskedKey] = useState<string | null>(null);
@@ -32,10 +34,11 @@ export default function SettingsPanel() {
         const [s, m] = await Promise.all([getSettings(), getMaskedApiKey()]);
         if (alive) {
           setSettings(s);
+          setUiLanguage(s.uiLanguage ?? 'zh');
           setMaskedKey(m);
         }
       } catch {
-        if (alive) setMsg('加载设置失败，请重试。');
+        if (alive) setMsg(t('settings.loadFailed'));
       }
     })();
     return () => {
@@ -48,6 +51,12 @@ export default function SettingsPanel() {
   }
   function patchParams(p: Partial<Settings['params']>) {
     setSettings((s) => ({ ...s, params: { ...s.params, ...p } }));
+  }
+  async function onUiLanguageChange(value: UiLanguage) {
+    setSettings((s) => ({ ...s, uiLanguage: value }));
+    setUiLanguage(value);
+    const saved = await updateSettings({ uiLanguage: value });
+    if (!saved.ok) setMsg(saved.error.message);
   }
 
   async function onSaveSettings() {
@@ -64,7 +73,7 @@ export default function SettingsPanel() {
           const grantedOrigins = Array.from(new Set([...(p.grantedOrigins ?? []), origin]));
           next = { ...settings, provider: { ...p, grantedOrigins } };
         } else {
-          warn = `未获授权访问 ${origin}，生成前需在弹窗中点「允许」。`;
+          warn = t('settings.permissionWarn', { origin });
         }
       }
     }
@@ -82,7 +91,7 @@ export default function SettingsPanel() {
     const r = await saveSettings(next);
     if (next !== settings) setSettings(next);
     if (!r.ok) setMsg(r.error.message);
-    else setMsg(warn ? `设置已保存，但${warn}` : '设置已保存。');
+    else setMsg(warn ? t('settings.savedWithWarn', { warn }) : t('settings.saved'));
   }
 
   async function onSaveKey() {
@@ -91,7 +100,7 @@ export default function SettingsPanel() {
     if (r.ok) {
       setKeyInput('');
       setMaskedKey(await getMaskedApiKey());
-      setMsg('API Key 已加密保存。');
+      setMsg(t('settings.keySaved'));
     } else {
       setMsg(r.error.message);
     }
@@ -114,14 +123,14 @@ export default function SettingsPanel() {
       const r = await testConnection({ provider, apiKey });
       if (r.ok) {
         setTestOk(true);
-        setTestMsg(`✅ 连接成功（延迟 ${r.latencyMs}ms）`);
+        setTestMsg(t('settings.connectionOk', { latencyMs: r.latencyMs }));
       } else {
         setTestOk(false);
         setTestMsg(`❌ ${r.message}`);
       }
     } catch {
       setTestOk(false);
-      setTestMsg('❌ 测试失败，请重试。');
+      setTestMsg(t('settings.connectionFailed'));
     } finally {
       if (!settings.persistApiKey) oneTimeKey.clear();
       setTesting(false);
@@ -132,7 +141,7 @@ export default function SettingsPanel() {
     const r = await clearApiKey();
     if (r.ok) {
       setMaskedKey(null);
-      setMsg('API Key 已删除。');
+      setMsg(t('settings.keyDeleted'));
     } else {
       // 删除失败时不能谎称已删：保留掩码并提示。
       setMsg(r.error.message);
@@ -141,13 +150,13 @@ export default function SettingsPanel() {
 
   return (
     <section className="flex flex-col gap-4 border-t border-gray-200 p-3">
-      <h2 className="text-sm font-semibold">设置</h2>
+      <h2 className="text-sm font-semibold">{t('settings.title')}</h2>
 
       {/* BYOK */}
       <div className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-gray-700">LLM Provider（自带 Key）</h3>
+        <h3 className="text-xs font-medium text-gray-700">{t('settings.providerTitle')}</h3>
         <label className="text-xs">
-          预设（选中即填好 Base URL 与默认模型，可再手改）
+          {t('settings.preset')}
           <select
             className="mt-1 w-full rounded border border-gray-300 p-1 text-sm"
             value={presetIdForProvider(settings.provider)}
@@ -164,11 +173,11 @@ export default function SettingsPanel() {
           </select>
         </label>
         <p className="text-[11px] leading-snug text-amber-700">
-          Kimi 编程版（kimi.com/code）的 Key 仅限编程工具，不能用于此处。
+          {t('settings.kimiWarning')}
         </p>
         {settings.provider.kind === 'openai-compatible' && (
           <label className="text-xs">
-            Base URL（https://，可选）
+            {t('settings.baseUrl')}
             <input
               className="mt-1 w-full rounded border border-gray-300 p-1 text-sm"
               placeholder="https://api.example.com/v1"
@@ -178,10 +187,10 @@ export default function SettingsPanel() {
           </label>
         )}
         <label className="text-xs">
-          模型名（需自行填写你账号可用的模型）
+          {t('settings.model')}
           <input
             className="mt-1 w-full rounded border border-gray-300 p-1 text-sm"
-            placeholder="如 gpt-4o-mini / claude-... / deepseek-chat"
+            placeholder={t('settings.modelPlaceholder')}
             value={settings.provider.model}
             onChange={(e) => patchProvider({ model: e.target.value })}
           />
@@ -193,18 +202,18 @@ export default function SettingsPanel() {
             checked={settings.persistApiKey}
             onChange={(e) => setSettings((s) => ({ ...s, persistApiKey: e.target.checked }))}
           />
-          在本机加密保存 API Key（关闭则每次生成时手动输入，不落盘）
+          {t('settings.persistApiKey')}
         </label>
 
         {settings.persistApiKey ? (
           <label className="text-xs">
-            API Key
+            {t('settings.apiKey')}
             <div className="mt-1 flex gap-1">
             <input
               type="password"
               autoComplete="off"
               className="w-full rounded border border-gray-300 p-1 text-sm"
-              placeholder={maskedKey ? `已配置（${maskedKey}）` : '粘贴你的 API Key'}
+              placeholder={maskedKey ? t('settings.maskedKeyPlaceholder', { maskedKey }) : t('settings.keyPlaceholder')}
               value={keyInput}
               onChange={(e) => setKeyInput(e.target.value)}
             />
@@ -213,7 +222,7 @@ export default function SettingsPanel() {
               onClick={onSaveKey}
               className="shrink-0 rounded bg-blue-600 px-2 text-xs text-white hover:bg-blue-700"
             >
-              保存
+              {t('common.save')}
             </button>
             {maskedKey && (
               <button
@@ -221,28 +230,27 @@ export default function SettingsPanel() {
                 onClick={onDeleteKey}
                 className="shrink-0 rounded border border-gray-300 px-2 text-xs hover:bg-gray-50"
               >
-                删除
+                {t('common.delete')}
               </button>
             )}
           </div>
           </label>
         ) : (
           <label className="text-xs">
-            API Key（本次测试用，不保存、不落盘）
+            {t('settings.tempKeyLabel')}
             <OneTimeKeyInput
               oneTimeKey={oneTimeKey}
               className="mt-1 w-full rounded border border-amber-300 p-1 text-sm outline-none focus:border-amber-500"
-              placeholder="粘贴一次性 Key 用于「测试连接」"
+              placeholder={t('settings.tempKeyPlaceholder')}
             />
             <p className="mt-1 text-[11px] leading-snug text-amber-700">
-              已关闭保存：Key 不会落盘。生成时在生成区临时输入；此处填的 Key 仅用于「测试连接」，用完即弃。
+              {t('settings.tempKeyHint')}
             </p>
           </label>
         )}
         {settings.persistApiKey && (
           <p className="text-[11px] leading-snug text-gray-500">
-            你的 API Key 已在本机加密保存，只用于直接调用 AI 服务。本地加密能降低硬盘被读取时的泄露风险，
-            但无法防护已被恶意软件控制的浏览器或设备——请只在你信任的电脑上保存 Key。
+            {t('settings.keySafety')}
           </p>
         )}
 
@@ -254,9 +262,9 @@ export default function SettingsPanel() {
             disabled={testing}
             className="rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
           >
-            {testing ? '测试中…' : '测试连接'}
+            {testing ? t('settings.testingConnection') : t('settings.testConnection')}
           </button>
-          <span className="text-[11px] text-gray-500">发一个极小请求自检，不保存、不落盘</span>
+          <span className="text-[11px] text-gray-500">{t('settings.testHint')}</span>
         </div>
         {testMsg && (
           <p className={`text-xs ${testOk ? 'text-green-700' : 'text-red-600'}`}>{testMsg}</p>
@@ -265,9 +273,23 @@ export default function SettingsPanel() {
 
       {/* 生成参数 */}
       <div className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-gray-700">生成参数</h3>
+        <h3 className="text-xs font-medium text-gray-700">{t('settings.paramsTitle')}</h3>
         <label className="text-xs">
-          目标视频模型（影响提示词模板）
+          {t('settings.uiLanguage')}
+          <select
+            className="mt-1 w-full rounded border border-gray-300 p-1 text-sm"
+            value={settings.uiLanguage ?? uiLanguage}
+            onChange={(e) => void onUiLanguageChange(e.target.value as UiLanguage)}
+          >
+            {UI_LANGS.map((l) => (
+              <option key={l} value={l}>
+                {t(`settings.lang.${l}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs">
+          {t('settings.videoModel')}
           <select
             className="mt-1 w-full rounded border border-gray-300 p-1 text-sm"
             value={settings.params.videoModel}
@@ -281,17 +303,17 @@ export default function SettingsPanel() {
           </select>
         </label>
         <label className="text-xs">
-          画面风格
+          {t('settings.style')}
           <input
             className="mt-1 w-full rounded border border-gray-300 p-1 text-sm"
-            placeholder="如 电影感 / 赛博朋克 / 治愈系"
+            placeholder={t('settings.stylePlaceholder')}
             value={settings.params.style}
             onChange={(e) => patchParams({ style: e.target.value })}
           />
         </label>
         <div className="flex gap-2">
           <label className="flex-1 text-xs">
-            画幅
+            {t('settings.aspectRatio')}
             <select
               className="mt-1 w-full rounded border border-gray-300 p-1 text-sm"
               value={settings.params.aspectRatio}
@@ -305,7 +327,7 @@ export default function SettingsPanel() {
             </select>
           </label>
           <label className="flex-1 text-xs">
-            单镜头时长
+            {t('settings.duration')}
             <select
               className="mt-1 w-full rounded border border-gray-300 p-1 text-sm"
               value={settings.params.shotDurationPref}
@@ -319,17 +341,17 @@ export default function SettingsPanel() {
             </select>
           </label>
           <label className="flex-1 text-xs">
-            输出语言
+            {t('settings.outputLanguage')}
             <select
               className="mt-1 w-full rounded border border-gray-300 p-1 text-sm"
               value={settings.params.outputLanguage}
               onChange={(e) => patchParams({ outputLanguage: e.target.value as OutputLanguage })}
             >
-              {LANGS.map((l) => (
-                <option key={l} value={l}>
-                  {LANG_LABELS[l]}
-                </option>
-              ))}
+            {LANGS.map((l) => (
+              <option key={l} value={l}>
+                {t(l === 'zh-en' ? 'settings.output.zhEn' : `settings.output.${l}`)}
+              </option>
+            ))}
             </select>
           </label>
         </div>
@@ -339,7 +361,7 @@ export default function SettingsPanel() {
           onClick={onSaveSettings}
           className="rounded bg-gray-800 px-3 py-2 text-sm font-medium text-white hover:bg-gray-900"
         >
-          保存设置
+          {t('settings.saveSettings')}
         </button>
         {msg && <p className="text-xs text-gray-700">{msg}</p>}
       </div>

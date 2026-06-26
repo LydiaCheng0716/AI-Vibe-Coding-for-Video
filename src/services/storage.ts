@@ -18,6 +18,7 @@ import { normalizeProject } from '../core/migrations';
 import { reinjectCharacterConsistency } from '../core/characters';
 import { reinjectGlobalStyle } from '../core/style';
 import { EXPORT_FORMATS, EXPORT_PROMPT_LANGS } from '../core/export';
+import { normalizeUiLanguage } from '../i18n/language';
 
 interface DraftRecord {
   text: string;
@@ -71,6 +72,7 @@ export async function getSettings(): Promise<Settings> {
   return {
     params: { ...base.params, ...stored.params },
     provider: { ...base.provider, ...stored.provider },
+    uiLanguage: normalizeUiLanguage(stored.uiLanguage),
     persistApiKey: stored.persistApiKey ?? base.persistApiKey,
     autoTranslateSync: stored.autoTranslateSync ?? base.autoTranslateSync,
     exportFormat: EXPORT_FORMATS.includes(stored.exportFormat as (typeof EXPORT_FORMATS)[number])

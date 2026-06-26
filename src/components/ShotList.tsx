@@ -8,6 +8,7 @@ import { copyToClipboard } from '../services/clipboard';
 import { useProjectStore } from '../sidepanel/projectStore';
 import { OneTimeKeyInput, useOneTimeKey, type OneTimeKeyState } from './OneTimeKeyInput';
 import { runBatch, skipped } from '../services/batch';
+import { useT } from '../i18n';
 
 interface Props {
   project: Project;
@@ -18,19 +19,20 @@ interface Props {
 const UNDO_MAX = 20;
 
 function InsertBar({ onInsert, disabled }: { onInsert: (desc: string) => void; disabled: boolean }) {
+  const t = useT();
   const [desc, setDesc] = useState('');
   return (
     <div className="flex items-center gap-1">
       <input
-        aria-label="插入镜头描述"
+        aria-label={t('shotList.insertDescAria')}
         className="flex-1 rounded border border-dashed border-gray-300 p-1 text-[11px] outline-none focus:border-blue-400"
-        placeholder="在此插入镜头：可选一句描述，留空则插入空白镜头"
+        placeholder={t('shotList.insertPlaceholder')}
         value={desc}
         onChange={(e) => setDesc(e.target.value)}
       />
       <button
         type="button"
-        aria-label="在当前位置插入镜头"
+        aria-label={t('shotList.insertAria')}
         onClick={() => {
           onInsert(desc);
           setDesc('');
@@ -38,7 +40,7 @@ function InsertBar({ onInsert, disabled }: { onInsert: (desc: string) => void; d
         disabled={disabled}
         className="shrink-0 rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50 disabled:opacity-50"
       >
-        ＋插入
+        {t('shotList.insert')}
       </button>
     </div>
   );
@@ -58,11 +60,12 @@ function TransitionBar({
   busy: boolean;
   oneTimeKey: OneTimeKeyState;
 }) {
+  const tt = useT();
   const { updateShotTransition } = useProjectStore();
-  const t = prev.transitionToNext;
-  const [type, setType] = useState(t?.type ?? TRANSITION_TYPES[0].id);
-  const [note, setNote] = useState(t?.note ?? '');
-  const [noteEn, setNoteEn] = useState(t?.noteEn ?? '');
+  const transition = prev.transitionToNext;
+  const [type, setType] = useState(transition?.type ?? TRANSITION_TYPES[0].id);
+  const [note, setNote] = useState(transition?.note ?? '');
+  const [noteEn, setNoteEn] = useState(transition?.noteEn ?? '');
   const [gen, setGen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const bilingual = lang === 'zh-en';
@@ -88,11 +91,11 @@ function TransitionBar({
   }
 
   async function onSaveNote() {
-    if (!t) return;
-    // 用当前选中的 type（用户可能改了下拉再编辑），而非旧 prop 的 t.type（Codex P2）。
+    if (!transition) return;
+    // 用当前选中的 type（用户可能改了下拉再编辑），而非旧 prop 的 transition.type（Codex P2）。
     const save = await updateShotTransition(prev.id, { type, note, ...(bilingual && noteEn ? { noteEn } : {}) });
     if (save.ok) {
-      setNotice('已保存');
+      setNotice(tt('common.saved'));
     } else if (!save.ok) setNotice(save.error.message);
   }
 
@@ -109,15 +112,15 @@ function TransitionBar({
   async function onCopy() {
     const text = bilingual && noteEn ? `${note}\n${noteEn}` : note;
     const r = await copyToClipboard(text);
-    setNotice(r.ok ? '已复制' : r.error.message);
+    setNotice(r.ok ? tt('common.copied') : r.error.message);
   }
 
   return (
     <div className="flex flex-col gap-1 rounded bg-gray-50 px-2 py-1">
       <div className="flex items-center gap-1">
-        <span className="text-[11px] text-gray-400">转场 ↧</span>
+        <span className="text-[11px] text-gray-400">{tt('shotList.transition')}</span>
         <select
-          aria-label={`镜头 ${prev.index} 到镜头 ${next.index} 的转场类型`}
+          aria-label={tt('shotList.transitionTypeAria', { prev: prev.index, next: next.index })}
           className="rounded border border-gray-300 p-0.5 text-[11px]"
           value={type}
           onChange={(e) => setType(e.target.value)}
@@ -130,38 +133,42 @@ function TransitionBar({
         </select>
         <button
           type="button"
-          aria-label={`${t ? '重新生成' : '生成'} 镜头 ${prev.index} 到镜头 ${next.index} 的转场说明`}
+          aria-label={tt('shotList.transitionActionAria', {
+            action: transition ? tt('common.regenerate') : tt('common.generate'),
+            prev: prev.index,
+            next: next.index,
+          })}
           onClick={onGenerate}
           disabled={busy || gen}
           className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-white disabled:opacity-50"
         >
-          {gen ? '生成中…' : t ? '重新生成' : '生成转场'}
+          {gen ? tt('common.generating') : transition ? tt('common.regenerate') : tt('shotList.generateTransition')}
         </button>
-        {t && (
+        {transition && (
           <>
             <button
               type="button"
-              aria-label={`复制 镜头 ${prev.index} 到镜头 ${next.index} 的转场说明`}
+              aria-label={tt('shotList.copyTransitionAria', { prev: prev.index, next: next.index })}
               onClick={onCopy}
               className="text-[11px] text-blue-600 hover:underline"
             >
-              复制
+              {tt('common.copy')}
             </button>
             <button
               type="button"
-              aria-label={`清除 镜头 ${prev.index} 到镜头 ${next.index} 的转场说明`}
+              aria-label={tt('shotList.clearTransitionAria', { prev: prev.index, next: next.index })}
               onClick={onClear}
               className="text-[11px] text-red-600 hover:underline"
             >
-              清除
+              {tt('shotList.clear')}
             </button>
           </>
         )}
       </div>
-      {t && (
+      {transition && (
         <>
           <input
-            aria-label={`镜头 ${prev.index} 到镜头 ${next.index} 的中文转场说明`}
+            aria-label={tt('shotList.transitionZhAria', { prev: prev.index, next: next.index })}
             className="w-full rounded border border-gray-300 p-1 text-[11px]"
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -169,7 +176,7 @@ function TransitionBar({
           />
           {bilingual && (
             <input
-              aria-label={`镜头 ${prev.index} 到镜头 ${next.index} 的英文转场说明`}
+              aria-label={tt('shotList.transitionEnAria', { prev: prev.index, next: next.index })}
               className="w-full rounded border border-gray-300 p-1 text-[11px]"
               value={noteEn}
               placeholder="English transition note"
@@ -185,6 +192,7 @@ function TransitionBar({
 }
 
 export default function ShotList({ project, busy, persistApiKey }: Props) {
+  const t = useT();
   const { setShots, replaceShot, updateShotFirstFrame, updateShotTransition } = useProjectStore();
   const [history, setHistory] = useState<Shot[][]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -228,7 +236,9 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
 
   function failDetails<T>(failed: Array<{ item: T; error: string }>, label: (item: T) => string): string {
     if (failed.length === 0) return '';
-    return `（${failed.map((f) => `${label(f.item)}：${f.error}`).join('；')}）`;
+    return t('shotList.failDetails', {
+      details: failed.map((f) => t('shotList.failPair', { label: label(f.item), error: f.error })).join('；'),
+    });
   }
 
   async function onBatchFirstFrames() {
@@ -236,13 +246,13 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
     workingRef.current = true;
     setWorking(true);
     setNotice(null);
-    setBatchProgress(`处理中 0/${ordered.length}`);
+    setBatchProgress(t('shotList.processing', { done: 0, total: ordered.length }));
     try {
       const summary = await runBatch<Shot, FirstFrameResult>(
         ordered,
         async (shot) => {
-          if (!aliveRef.current) return skipped('已取消');
-          if (shot.firstFramePrompt != null) return skipped('已存在首帧');
+          if (!aliveRef.current) return skipped(t('shotList.canceled'));
+          if (shot.firstFramePrompt != null) return skipped(t('shotList.firstFrameExists'));
           const generated = await generateFirstFrame({
             shot,
             characters: project.characters,
@@ -254,20 +264,22 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
           const saved = await updateShotFirstFrame(shot.id, generated.data);
           if (!saved.ok) return { ok: false, error: saved.error };
           // store 在无项目/无匹配镜头时返回 ok(null)：未真正落库，不能记成功（Kimi minor）。
-          if (saved.data === null) return err('STORAGE_WRITE_FAILED', '未找到镜头，首帧未保存');
+          if (saved.data === null) return err('STORAGE_WRITE_FAILED', t('shotList.firstFrameMissingShot'));
           return generated;
         },
         {
           onProgress: (done, total) => {
-            if (aliveRef.current) setBatchProgress(`处理中 ${done}/${total}`);
+            if (aliveRef.current) setBatchProgress(t('shotList.processing', { done, total }));
           },
         },
       );
       setNotice(
-        `首帧批量完成：成功 ${summary.ok.length}、跳过 ${summary.skipped.length}、失败 ${summary.failed.length}${failDetails(
-          summary.failed,
-          (shot) => `镜头 ${shot.index}`,
-        )}`,
+        t('shotList.firstFrameBatchDone', {
+          ok: summary.ok.length,
+          skipped: summary.skipped.length,
+          failed: summary.failed.length,
+          details: failDetails(summary.failed, (shot) => t('shotList.shotLabel', { index: shot.index })),
+        }),
       );
     } finally {
       if (!oneTimeKey.persistApiKey) oneTimeKey.clear();
@@ -283,13 +295,13 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
     workingRef.current = true;
     setWorking(true);
     setNotice(null);
-    setBatchProgress(`处理中 0/${pairs.length}`);
+    setBatchProgress(t('shotList.processing', { done: 0, total: pairs.length }));
     try {
       const summary = await runBatch<{ prev: Shot; next: Shot }, Transition>(
         pairs,
         async ({ prev, next }) => {
-          if (!aliveRef.current) return skipped('已取消');
-          if (prev.transitionToNext != null) return skipped('已存在转场');
+          if (!aliveRef.current) return skipped(t('shotList.canceled'));
+          if (prev.transitionToNext != null) return skipped(t('shotList.transitionExists'));
           const generated = await generateTransition({
             prevShot: prev,
             nextShot: next,
@@ -301,20 +313,24 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
           const saved = await updateShotTransition(prev.id, generated.data);
           if (!saved.ok) return { ok: false, error: saved.error };
           // 同上：ok(null) 表示未落库，不计成功（Kimi minor）。
-          if (saved.data === null) return err('STORAGE_WRITE_FAILED', '未找到镜头，转场未保存');
+          if (saved.data === null) return err('STORAGE_WRITE_FAILED', t('shotList.transitionMissingShot'));
           return generated;
         },
         {
           onProgress: (done, total) => {
-            if (aliveRef.current) setBatchProgress(`处理中 ${done}/${total}`);
+            if (aliveRef.current) setBatchProgress(t('shotList.processing', { done, total }));
           },
         },
       );
       setNotice(
-        `转场批量完成：成功 ${summary.ok.length}、跳过 ${summary.skipped.length}、失败 ${summary.failed.length}${failDetails(
-          summary.failed,
-          ({ prev, next }) => `镜头 ${prev.index}→${next.index}`,
-        )}`,
+        t('shotList.transitionBatchDone', {
+          ok: summary.ok.length,
+          skipped: summary.skipped.length,
+          failed: summary.failed.length,
+          details: failDetails(summary.failed, ({ prev, next }) =>
+            t('shotList.shotPairLabel', { prev: prev.index, next: next.index }),
+          ),
+        }),
       );
     } finally {
       if (!oneTimeKey.persistApiKey) oneTimeKey.clear();
@@ -336,7 +352,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
 
   async function onDelete(shotId: string) {
     if (disabled) return;
-    if (!window.confirm('确定删除这个镜头？可点「撤销」恢复。')) return;
+    if (!window.confirm(t('shotList.confirmDelete'))) return;
     setNotice(null);
     await applyShots(ordered, deleteShotById(ordered, shotId));
   }
@@ -384,7 +400,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
           const saved = await replaceShot(blank.id, r.data);
           if (!saved.ok) setNotice(saved.error.message);
         } else {
-          setNotice(`空白镜头已插入，但生成失败：${r.error.message}`);
+          setNotice(t('shotList.insertGenerateFailed', { message: r.error.message }));
         }
       }
     } finally {
@@ -399,7 +415,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
     const r = await setShots(prev);
     if (r.ok) {
       setHistory((h) => h.slice(0, -1));
-      setNotice('已撤销上一步结构操作');
+      setNotice(t('shotList.undoStructureDone'));
     } else {
       setNotice(r.error.message);
     }
@@ -408,55 +424,55 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
   return (
     <div className="flex flex-col gap-3 p-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">分镜（{ordered.length} 个镜头）</h2>
+        <h2 className="text-sm font-semibold">{t('shotList.title', { n: ordered.length })}</h2>
         {history.length > 0 && (
           <button
             type="button"
-            aria-label={`撤销上一步结构操作，当前 ${history.length} 步可撤销`}
+            aria-label={t('shotList.undoAria', { n: history.length })}
             onClick={onUndo}
             disabled={disabled}
             className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
           >
-            撤销（{history.length}）
+            {t('shotList.undo', { n: history.length })}
           </button>
         )}
       </div>
       <OneTimeKeyInput
         oneTimeKey={oneTimeKey}
-        aria-label="一次性 API Key，用于批量生成或插入即时生成"
+        aria-label={t('shotList.tempKeyAria')}
         className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-        placeholder="一次性 API Key（已关闭保存，用于批量/插入即时生成，不落盘）"
+        placeholder={t('shotList.tempKeyPlaceholder')}
       />
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          aria-label="批量生成所有缺失的首帧提示词"
+          aria-label={t('shotList.batchFirstFramesAria')}
           onClick={onBatchFirstFrames}
           disabled={disabled}
           className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
         >
-          批量生成首帧
+          {t('shotList.batchFirstFrames')}
         </button>
         <button
           type="button"
-          aria-label="批量生成相邻镜头转场提示词"
+          aria-label={t('shotList.batchTransitionsAria')}
           onClick={onBatchTransitions}
           disabled={disabled}
           className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
         >
-          批量生成转场
+          {t('shotList.batchTransitions')}
         </button>
         {batchProgress && <span className="text-xs text-blue-600">{batchProgress}</span>}
       </div>
       {notice && <p className="text-xs text-gray-600">{notice}</p>}
 
       <InsertBar onInsert={(d) => onInsert(0, d)} disabled={disabled} />
-      <div ref={listRef} role="list" aria-label="分镜列表" className="flex flex-col gap-3">
+      <div ref={listRef} role="list" aria-label={t('shotList.listAria')} className="flex flex-col gap-3">
         {ordered.map((s, i) => (
           <div key={s.id} role="listitem" className="flex flex-col gap-3">
             <div
               draggable={!disabled}
-              aria-label={`镜头 ${s.index}，可拖拽或用上移/下移按钮重排`}
+              aria-label={t('shotList.itemDragAria', { index: s.index })}
               onDragStart={() => setDragId(s.id)}
               onDragEnd={() => setDragId(null)}
               onDragOver={(e) => e.preventDefault()}
@@ -472,23 +488,23 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
                   type="button"
                   data-move="up"
                   data-shot={s.id}
-                  aria-label={`上移 镜头 ${s.index}`}
+                  aria-label={t('shotList.moveUpAria', { index: s.index })}
                   onClick={() => void onKeyboardMove(s.id, i - 1, 'up')}
                   disabled={disabled || moving || i === 0}
                   className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50 disabled:opacity-50"
                 >
-                  上移
+                  {t('shotList.moveUp')}
                 </button>
                 <button
                   type="button"
                   data-move="down"
                   data-shot={s.id}
-                  aria-label={`下移 镜头 ${s.index}`}
+                  aria-label={t('shotList.moveDownAria', { index: s.index })}
                   onClick={() => void onKeyboardMove(s.id, i + 1, 'down')}
                   disabled={disabled || moving || i === ordered.length - 1}
                   className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50 disabled:opacity-50"
                 >
-                  下移
+                  {t('shotList.moveDown')}
                 </button>
               </div>
               <ShotCard

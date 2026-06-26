@@ -9,9 +9,9 @@ import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
 import {
   saveCharacterToLibrary,
   CHARACTER_CATEGORIES,
-  CHARACTER_CATEGORY_LABELS,
   type CharacterCategory,
 } from '../services/characterLibrary';
+import { useI18n, type BoundT } from '../i18n';
 
 interface Props {
   characters: Character[];
@@ -21,17 +21,17 @@ interface Props {
   busy: boolean;
 }
 
-function displayName(c: Character): string {
+function displayName(c: Character, t: BoundT): string {
   if (c.name) return c.name;
-  return `角色${c.id.replace(/^c/, '')}`;
+  return t('character.fallbackName', { id: c.id.replace(/^c/, '') });
 }
 
 export default function CharacterPanel({
   characters,
   story,
-  lang,
   busy,
 }: Props) {
+  const { t } = useI18n();
   const { addCharacter } = useProjectStore();
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -59,14 +59,14 @@ export default function CharacterPanel({
   return (
     <section className="flex flex-col gap-3 p-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">角色（{characters.length}，可选，可跳过）</h2>
+        <h2 className="text-sm font-semibold">{t('character.title', { n: characters.length })}</h2>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
             className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
           >
-            {collapsed ? '展开' : '收起'}
+            {collapsed ? t('common.expand') : t('common.collapse')}
           </button>
           {!collapsed && (
             <button
@@ -75,27 +75,26 @@ export default function CharacterPanel({
               disabled={adding}
               className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
             >
-              {adding ? '新增中…' : '+ 新增角色'}
+              {adding ? t('character.adding') : t('character.add')}
             </button>
           )}
         </div>
       </div>
       {notice && <p className="text-xs text-red-600">{notice}</p>}
       {collapsed ? (
-        <p className="text-[11px] text-gray-400">角色固定是可选的，已收起；展开可调校角色或从角色库复用。</p>
+        <p className="text-[11px] text-gray-400">{t('character.collapsedHint')}</p>
       ) : (
         <>
           <OneTimeKeyInput
             oneTimeKey={oneTimeKey}
             className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-            placeholder="一次性 API Key（已关闭保存，仅用于「重新建议」，不落盘）"
+            placeholder={t('character.resuggestKeyPlaceholder')}
           />
           {characters.map((c) => (
             <CharacterCard
               key={c.id}
               character={c}
               story={story}
-              lang={lang}
               busy={busy}
               oneTimeKey={oneTimeKey}
               onSavedToLibrary={() => setLibRefresh((n) => n + 1)}
@@ -111,7 +110,6 @@ export default function CharacterPanel({
 interface CardProps {
   character: Character;
   story: string;
-  lang: OutputLanguage;
   busy: boolean;
   /** 不保存 Key 模式的一次性 Key（透传给「重新建议」服务，不落盘）。 */
   oneTimeKey: ReturnType<typeof useOneTimeKey>;
@@ -122,13 +120,13 @@ interface CardProps {
 function CharacterCard({
   character,
   story,
-  lang,
   busy,
   oneTimeKey,
   onSavedToLibrary,
 }: CardProps) {
+  const { t, uiLanguage } = useI18n();
   const { updateCharacter } = useProjectStore();
-  const labels = CHARACTER_FIELD_LABELS[lang] ?? CHARACTER_FIELD_LABELS.zh;
+  const labels = CHARACTER_FIELD_LABELS[uiLanguage] ?? CHARACTER_FIELD_LABELS.zh;
   const locked = !!character.locked;
   // 档案草稿（本地编辑态）：从 props 播种一次（卡片以 id 为 key，角色切换即重挂载）。
   const [profile, setProfile] = useState<CharacterProfile>(character.profile ?? emptyProfile());
@@ -143,7 +141,7 @@ function CharacterCard({
       category,
     );
     if (r.ok) {
-      setNotice('已存入角色库');
+      setNotice(t('character.savedToLibrary'));
       onSavedToLibrary();
     } else {
       setNotice(r.error.message);
@@ -202,15 +200,15 @@ function CharacterCard({
   async function onCopySeed() {
     if (!character.seedPhrase) return;
     const r = await copyToClipboard(character.seedPhrase);
-    setNotice(r.ok ? '种子短语已复制' : r.error.message);
+    setNotice(r.ok ? t('character.seedCopied') : r.error.message);
   }
 
   return (
     <div className="rounded border border-gray-200 p-3">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-700">
-          {displayName(character)}
-          {locked && <span className="ml-1 text-green-700">（已锁定）</span>}
+          {displayName(character, t)}
+          {locked && <span className="ml-1 text-green-700">{t('character.locked')}</span>}
         </span>
         <button
           type="button"
@@ -221,7 +219,7 @@ function CharacterCard({
               : 'border border-gray-300 hover:bg-gray-50'
           }`}
         >
-          {locked ? '解锁' : '锁定'}
+          {locked ? t('common.unlock') : t('common.lock')}
         </button>
       </div>
 
@@ -239,7 +237,7 @@ function CharacterCard({
                     disabled={busy || resuggesting !== null}
                     className="text-[11px] text-blue-600 hover:underline disabled:opacity-50"
                   >
-                    {resuggesting === key ? '生成中…' : '重新建议'}
+                    {resuggesting === key ? t('character.resuggesting') : t('character.resuggest')}
                   </button>
                 )}
               </div>
@@ -271,15 +269,15 @@ function CharacterCard({
 
       {character.seedPhrase && (
         <div className="mt-2 flex items-center gap-2">
-          <p className="flex-1 text-[11px] text-gray-500">种子：{character.seedPhrase}</p>
+          <p className="flex-1 text-[11px] text-gray-500">{t('character.seed', { seed: character.seedPhrase })}</p>
           <button type="button" onClick={onCopySeed} className="text-[11px] text-blue-600 hover:underline">
-            复制
+            {t('common.copy')}
           </button>
         </div>
       )}
       {/* Issue #40：存入角色库（带分类）以便跨分镜复用 */}
       <div className="mt-2 flex items-center gap-2 border-t border-gray-100 pt-2">
-        <span className="text-[11px] text-gray-500">分类</span>
+        <span className="text-[11px] text-gray-500">{t('character.category')}</span>
         <select
           className="rounded border border-gray-300 p-0.5 text-[11px]"
           value={category}
@@ -287,7 +285,7 @@ function CharacterCard({
         >
           {CHARACTER_CATEGORIES.map((cat) => (
             <option key={cat} value={cat}>
-              {CHARACTER_CATEGORY_LABELS[cat]}
+            {t(`character.category.${cat}`)}
             </option>
           ))}
         </select>
@@ -296,7 +294,7 @@ function CharacterCard({
           onClick={onSaveToLibrary}
           className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50"
         >
-          存入角色库
+          {t('character.saveToLibrary')}
         </button>
       </div>
       {notice && <p className="mt-1 text-[11px] text-gray-600">{notice}</p>}

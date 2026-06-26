@@ -4,6 +4,7 @@ import { generateBgmPrompt } from '../services/generation';
 import { copyToClipboard } from '../services/clipboard';
 import { useProjectStore } from '../sidepanel/projectStore';
 import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
+import { useT } from '../i18n';
 
 interface Props {
   project: Project | null;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function BgmPanel({ project, busy }: Props) {
+  const t = useT();
   const { updateBgm } = useProjectStore();
   const [notice, setNotice] = useState<string | null>(null);
   const oneTimeKey = useOneTimeKey();
@@ -20,11 +22,11 @@ export default function BgmPanel({ project, busy }: Props) {
   async function onGenerate() {
     if (busy) return;
     if (!oneTimeKey.persistApiKey && !oneTimeKey.hasKey) {
-      setNotice('请先输入本次使用的 API Key（已关闭保存）。');
+      setNotice(t('bgm.noTempKey'));
       return;
     }
     const language = project?.params.outputLanguage ?? 'zh';
-    setNotice('正在生成 BGM 提示词…');
+    setNotice(t('bgm.generatingNotice'));
     let r;
     try {
       r = await generateBgmPrompt({
@@ -52,18 +54,19 @@ export default function BgmPanel({ project, busy }: Props) {
   async function onCopy() {
     if (!bgm) return;
     const r = await copyToClipboard(bgm.prompt);
-    setNotice(r.ok ? '已复制 BGM 提示词' : r.error.message);
-    if (r.ok) window.setTimeout(() => setNotice((n) => (n === '已复制 BGM 提示词' ? null : n)), 2000);
+    const copied = t('bgm.copied');
+    setNotice(r.ok ? copied : r.error.message);
+    if (r.ok) window.setTimeout(() => setNotice((n) => (n === copied ? null : n)), 2000);
   }
 
   return (
     <div className="flex flex-col gap-2 border-t border-gray-200 p-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">BGM 提示词</h2>
+        <h2 className="text-sm font-semibold">{t('bgm.title')}</h2>
         <div className="flex gap-2">
           {bgm && (
             <button type="button" onClick={onCopy} className="text-xs text-blue-600 hover:underline">
-              复制
+              {t('common.copy')}
             </button>
           )}
           <button
@@ -72,14 +75,14 @@ export default function BgmPanel({ project, busy }: Props) {
             disabled={busy}
             className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {busy ? '生成中…' : bgm ? '重新生成' : '生成 BGM'}
+            {busy ? t('common.generating') : bgm ? t('common.regenerate') : t('bgm.generate')}
           </button>
         </div>
       </div>
       <OneTimeKeyInput
         oneTimeKey={oneTimeKey}
         className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-        placeholder="本次使用的 API Key（已关闭保存，不落盘）"
+        placeholder={t('bgm.tempKeyPlaceholder')}
       />
       {bgm && (
         <pre className="whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs text-gray-800">

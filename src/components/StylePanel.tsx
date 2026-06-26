@@ -4,6 +4,7 @@ import { STYLE_FIELD_KEYS, STYLE_FIELD_LABELS, emptyStyleProfile } from '../core
 import { suggestStyleField } from '../services/styleSuggest';
 import { useProjectStore } from '../sidepanel/projectStore';
 import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
+import { useI18n } from '../i18n';
 
 interface Props {
   globalStyle: GlobalStyle | undefined;
@@ -13,8 +14,9 @@ interface Props {
   persistApiKey: boolean;
 }
 
-export default function StylePanel({ globalStyle, story, lang, busy, persistApiKey }: Props) {
-  const labels = STYLE_FIELD_LABELS[lang] ?? STYLE_FIELD_LABELS.zh;
+export default function StylePanel({ globalStyle, story, busy, persistApiKey }: Props) {
+  const { t, uiLanguage } = useI18n();
+  const labels = STYLE_FIELD_LABELS[uiLanguage] ?? STYLE_FIELD_LABELS.zh;
   const locked = !!globalStyle?.locked;
   const { updateGlobalStyle } = useProjectStore();
   const [profile, setProfile] = useState<StyleProfile>(globalStyle?.profile ?? emptyStyleProfile());
@@ -68,7 +70,7 @@ export default function StylePanel({ globalStyle, story, lang, busy, persistApiK
     <section className="flex flex-col gap-2 border-t border-gray-200 p-3">
       <div className="flex items-center justify-between">
         <button type="button" onClick={() => setCollapsed((v) => !v)} className="text-sm font-semibold">
-          全局风格（可选，可跳过）{locked && <span className="ml-1 text-green-700">（已锁定）</span>}
+          {t('style.title')}{locked && <span className="ml-1 text-green-700">{t('style.locked')}</span>}
           {collapsed ? ' ▸' : ' ▾'}
         </button>
         <button
@@ -78,7 +80,7 @@ export default function StylePanel({ globalStyle, story, lang, busy, persistApiK
             locked ? 'border border-green-300 bg-green-50 text-green-800' : 'border border-gray-300 hover:bg-gray-50'
           }`}
         >
-          {locked ? '解锁' : '锁定'}
+          {locked ? t('common.unlock') : t('common.lock')}
         </button>
       </div>
 
@@ -87,7 +89,7 @@ export default function StylePanel({ globalStyle, story, lang, busy, persistApiK
           <OneTimeKeyInput
             oneTimeKey={oneTimeKey}
             className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-            placeholder="一次性 API Key（已关闭保存，仅用于「重新建议」，不落盘）"
+            placeholder={t('style.resuggestKeyPlaceholder')}
           />
           {STYLE_FIELD_KEYS.map((key) => {
             const candidates = globalStyle?.suggestions?.[key] ?? [];
@@ -102,7 +104,7 @@ export default function StylePanel({ globalStyle, story, lang, busy, persistApiK
                       disabled={busy || resuggesting !== null}
                       className="text-[11px] text-blue-600 hover:underline disabled:opacity-50"
                     >
-                      {resuggesting === key ? '生成中…' : '重新建议'}
+                      {resuggesting === key ? t('character.resuggesting') : t('character.resuggest')}
                     </button>
                   )}
                 </div>
