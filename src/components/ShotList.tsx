@@ -467,7 +467,13 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
       {notice && <p className="text-xs text-gray-600">{notice}</p>}
 
       <InsertBar onInsert={(d) => onInsert(0, d)} disabled={disabled} />
-      <div ref={listRef} role="list" aria-label={t('shotList.listAria')} className="flex flex-col gap-3">
+      <div
+        ref={listRef}
+        role="list"
+        aria-label={t('shotList.listAria')}
+        data-testid="shot-list"
+        className="flex flex-col gap-3"
+      >
         {ordered.map((s, i) => (
           <div key={s.id} role="listitem" className="flex flex-col gap-3">
             <div

@@ -379,7 +379,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
   });
 
   return (
-    <div className="rounded border border-gray-200 p-3">
+    <div data-testid="shot-card" className="rounded border border-gray-200 p-3">
       <div className="mb-1 flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-500">
           {t('shotCard.title', { index: shot.index })}
@@ -400,6 +400,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
           {!editing && (
             <button
               type="button"
+              data-testid="shot-edit"
               aria-label={t('shotCard.editAria', { index: shot.index })}
               onClick={onEdit}
               className="text-xs text-blue-600 hover:underline"
@@ -503,6 +504,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             onCopied={clearCopyNotice}
           >
             <textarea
+              data-testid="shot-edit-input"
               aria-label={t('shotCard.editZhAria', { index: shot.index })}
               className="min-h-[120px] w-full resize-y rounded border border-gray-300 p-2 pr-16 text-xs outline-none focus:border-blue-500"
               value={draft}
@@ -534,6 +536,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
           <div className="flex gap-2">
             <button
               type="button"
+              data-testid="shot-save"
               onClick={onSave}
               disabled={saving || translating !== null}
               className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
