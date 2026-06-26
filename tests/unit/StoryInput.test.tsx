@@ -59,4 +59,26 @@ describe('StoryInput token usage notice', () => {
       expect(screen.getByText(/生成完成（估算 输入 ~\d+ \/ 输出 ~\d+ tokens，仅供参考）/)).toBeTruthy();
     });
   });
+
+  it('流式进度包含 shotsReady 时显示已生成镜头数', async () => {
+    const user = userEvent.setup();
+    const project = makeProject();
+    let finish!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    vi.mocked(generateStoryboardForStoreWithUsage).mockImplementation(async (_input, _retry, onProgress) => {
+      onProgress?.({ phase: 'requesting', message: '正在请求 AI 生成分镜…', shotsReady: 2 });
+      await gate;
+      return ok({ project });
+    });
+    setup(project);
+
+    await user.type(screen.getByLabelText('你的故事'), STORY);
+    await user.click(screen.getByRole('button', { name: '生成分镜' }));
+
+    expect(await screen.findByText('已生成 2 个镜头…')).toBeTruthy();
+    finish();
+    await screen.findByText(/生成完成/);
+  });
 });

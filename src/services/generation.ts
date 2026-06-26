@@ -15,7 +15,15 @@ import { STORYBOARD_TIMEOUT_MS, BGM_TIMEOUT_MS, MAX_OUTPUT_TOKENS } from '../cor
 import { validateStory, validateProviderConfig } from '../core/validate';
 import { buildStoryboardPrompt } from '../prompts/storyboard';
 import { buildBgmPrompt } from '../prompts/bgm';
-import { parseStoryboard, parseBgmPrompt, buildProject, parseShotRewrite, parseTransition, parseFirstFrame } from '../core/parse';
+import {
+  extractShotsPrefix,
+  parseStoryboard,
+  parseBgmPrompt,
+  buildProject,
+  parseShotRewrite,
+  parseTransition,
+  parseFirstFrame,
+} from '../core/parse';
 import { buildTransitionPrompt } from '../prompts/transition';
 import { buildFirstFramePrompt } from '../prompts/firstFrame';
 import { buildTranslatePrompt } from '../prompts/translate';
@@ -55,18 +63,28 @@ async function callWithTimeout(
   provider: LlmProvider,
   args: { system: string; user: string; model: string; apiKey: string },
   timeoutMs: number,
+  stream?: { onText: (delta: string) => void },
 ): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const req = {
+    system: args.system,
+    user: args.user,
+    model: args.model,
+    apiKey: args.apiKey,
+    maxTokens: MAX_OUTPUT_TOKENS,
+    signal: ctrl.signal,
+  };
   try {
-    return await provider.complete({
-      system: args.system,
-      user: args.user,
-      model: args.model,
-      apiKey: args.apiKey,
-      maxTokens: MAX_OUTPUT_TOKENS,
-      signal: ctrl.signal,
-    });
+    if (stream && provider.completeStream) {
+      try {
+        return await provider.completeStream(req, stream.onText);
+      } catch (e) {
+        if (ctrl.signal.aborted) throw e;
+        return await provider.complete(req);
+      }
+    }
+    return await provider.complete(req);
   } finally {
     clearTimeout(timer);
   }
@@ -204,6 +222,7 @@ export async function generateStoryboardAttempt(
 export async function generateStoryboardAttemptWithUsage(
   input: { story: string; params?: Settings['params']; apiKey?: string },
   deps: GenerationDeps = realDeps,
+  onProgress?: (p: GenerationProgress) => void,
 ): Promise<Result<StoryboardGenerationResult>> {
   // 故事非空 / 长度边界（ADR-2，trim 后码点数）
   const sv = validateStory(input.story);
@@ -222,11 +241,27 @@ export async function generateStoryboardAttemptWithUsage(
   const { system, user } = buildStoryboardPrompt(input.story, params);
   let raw: string;
   const llmProvider = deps.createProvider(provider);
+  let streamedBuffer = '';
+  let shotsReady = 0;
   try {
     raw = await callWithTimeout(
       llmProvider,
       { system, user, model: provider.model, apiKey },
       STORYBOARD_TIMEOUT_MS,
+      {
+        onText: (delta) => {
+          streamedBuffer += delta;
+          const nextReady = extractShotsPrefix(streamedBuffer).length;
+          if (nextReady > shotsReady) {
+            shotsReady = nextReady;
+            onProgress?.({
+              phase: 'requesting',
+              message: `已生成 ${nextReady} 个镜头…`,
+              shotsReady: nextReady,
+            });
+          }
+        },
+      },
     );
   } catch (e) {
     return providerErr(e);
@@ -254,15 +289,16 @@ export interface GenerationProgress {
   message: string;
   /** done 阶段携带真实 provider token 用量；provider 未返回 usage 时不存在。 */
   usage?: LlmUsage;
+  /** requesting 阶段：流式增量解析出的完整镜头数量。 */
+  shotsReady?: number;
 }
 
 /**
  * 生成完整分镜并落库（TASK-009 接入）：全局锁(并发=1) → 退避重试(仅 LLM 部分) → 落库一次。
  * - 进行中再次调用 → GENERATION_IN_PROGRESS（防重复提交，分镜与 BGM 共享锁）。
  * - 重试只重发 LLM 调用，不重复写 storage。
- * - onProgress（Issue #33）：上报请求/重试/保存/完成/失败阶段，避免长故事被误判为卡死；
- *   与锁+重试兼容，失败时上报 error 阶段（状态正确回退）。单次调用返回所有镜头（非流式），
- *   故进度按「尝试次数 + 阶段」呈现，而非逐镜头。
+ * - onProgress（Issue #33/#69）：上报请求/重试/逐镜头/保存/完成/失败阶段，避免长故事被误判为卡死；
+ *   与锁+重试兼容，失败时上报 error 阶段（状态正确回退）。流式不可用时仍只有「尝试次数 + 阶段」。
  */
 export async function generateStoryboard(
   input: { story: string; params?: Settings['params']; apiKey?: string },
@@ -282,7 +318,7 @@ export async function generateStoryboardWithUsage(
 ): Promise<Result<StoryboardGenerationResult>> {
   const report = onProgress ?? (() => {});
   return withLlmLock(async () => {
-    const attempt = await withRetry(() => generateStoryboardAttemptWithUsage(input, deps), {
+    const attempt = await withRetry(() => generateStoryboardAttemptWithUsage(input, deps, report), {
       ...retryOpts,
       onAttempt: (n, max) =>
         report({

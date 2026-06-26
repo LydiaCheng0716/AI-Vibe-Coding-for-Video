@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseStoryboard, parseBgmPrompt, parseFieldSuggestions } from '../../src/core/parse';
+import { extractShotsPrefix, parseStoryboard, parseBgmPrompt, parseFieldSuggestions } from '../../src/core/parse';
 
 describe('parseBgmPrompt（TASK-007）', () => {
   it('JSON {prompt} → 取 prompt', () => {
@@ -131,6 +131,44 @@ describe('parseStoryboard: 解析接受范围（ADR-6(2)）', () => {
   it('空字符串 → 失败', () => {
     expect(parseStoryboard('').ok).toBe(false);
     expect(parseStoryboard('   ').ok).toBe(false);
+  });
+});
+
+describe('extractShotsPrefix（Issue #69 流式增量解析）', () => {
+  it('空输入 / shots 未出现 / shots 键半截 → []', () => {
+    expect(extractShotsPrefix('')).toEqual([]);
+    expect(extractShotsPrefix('{"characters":[')).toEqual([]);
+    expect(extractShotsPrefix('{"sho')).toEqual([]);
+  });
+
+  it('完整数组返回所有完整 shot 对象', () => {
+    expect(extractShotsPrefix(JSON.stringify({ shots: threeShots }))).toEqual(threeShots);
+  });
+
+  it('未闭合的最后一个 shot 不计入', () => {
+    const first = JSON.stringify(shot({ summary: '完整' }));
+    expect(extractShotsPrefix(`{"shots":[${first},{"summary":"半截"`)).toEqual([
+      shot({ summary: '完整' }),
+    ]);
+  });
+
+  it('字符串内的括号、数组、引号和转义不影响深度判断', () => {
+    const tricky = shot({
+      summary: '含 { } [ ] 和 "quote"',
+      prompt: '角色说：\\"镜头里有 [brackets] 和 {braces}\\"',
+    });
+    const second = shot({ summary: '第二镜' });
+    const raw = `{"shots":[${JSON.stringify(tricky)},${JSON.stringify(second)},{"summary":"半截"`;
+    expect(extractShotsPrefix(raw)).toEqual([tricky, second]);
+  });
+
+  it('支持 shot 内部嵌套对象与数组', () => {
+    const nested = {
+      ...shot({ summary: '嵌套' }),
+      characterRefs: ['c1', 'c2'],
+      meta: { beats: [{ label: 'a,b' }, { label: 'c' }] },
+    };
+    expect(extractShotsPrefix(`{"shots":[${JSON.stringify(nested)},`)).toEqual([nested]);
   });
 });
 

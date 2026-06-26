@@ -26,6 +26,8 @@ export interface LlmUsage {
 export interface LlmProvider {
   /** 发起一次「要求结构化 JSON 输出」的补全；返回原始文本（内含 JSON），由 core/parse 解析。 */
   complete(req: CompleteRequest): Promise<string>;
+  /** 可选 SSE 流式补全；逐段回调文本 delta，resolve 时仍返回完整文本。 */
+  completeStream?(req: CompleteRequest, onText: (delta: string) => void): Promise<string>;
   /** 最近一次成功 complete 的 provider token 用量；provider 未返回 usage 或失败时为 null。 */
   lastUsage?(): LlmUsage | null;
   /**
