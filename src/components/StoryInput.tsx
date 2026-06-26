@@ -6,6 +6,7 @@ import { generateStoryboardForStoreWithUsage } from '../services/generation';
 import { estimateTokens, estimateProjectTokens, longStoryWarning } from '../core/tokens';
 import type { Project, Result } from '../core/models';
 import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
+import { useT } from '../i18n';
 
 interface Props {
   /** 生成成功后交给 project store 落库并广播；失败则不推进 UI。 */
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function StoryInput({ onGenerated, busy }: Props) {
+  const t = useT();
   const [text, setText] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const oneTimeKey = useOneTimeKey();
@@ -77,10 +79,10 @@ export default function StoryInput({ onGenerated, busy }: Props) {
       return;
     }
     if (!oneTimeKey.persistApiKey && !oneTimeKey.hasKey) {
-      setNotice('请先输入本次使用的 API Key（已关闭保存）。');
+      setNotice(t('storyInput.noTempKey'));
       return;
     }
-    setNotice('正在生成分镜…');
+    setNotice(t('storyInput.generatingNotice'));
     try {
       // Issue #33：上报进度阶段（请求/重试/保存），避免长故事被误判为卡死。
       const r = await generateStoryboardForStoreWithUsage(
@@ -88,7 +90,7 @@ export default function StoryInput({ onGenerated, busy }: Props) {
         undefined,
         (p) => {
           if (p.phase !== 'done') {
-            setNotice(typeof p.shotsReady === 'number' ? `已生成 ${p.shotsReady} 个镜头…` : p.message);
+            setNotice(typeof p.shotsReady === 'number' ? t('storyInput.progressShots', { n: p.shotsReady }) : p.message);
           }
         },
       );
@@ -97,10 +99,10 @@ export default function StoryInput({ onGenerated, busy }: Props) {
         const saved = await onGenerated(project);
         if (saved.ok) {
           if (usage) {
-            setNotice(`生成完成（输入 ${usage.input} / 输出 ${usage.output} tokens）`);
+            setNotice(t('storyInput.doneUsage', { input: usage.input, output: usage.output }));
           } else {
             const { input, output } = estimateProjectTokens(text, project);
-            setNotice(`生成完成（估算 输入 ~${input} / 输出 ~${output} tokens，仅供参考）`);
+            setNotice(t('storyInput.doneEstimated', { input, output }));
           }
         } else {
           setNotice(saved.error.message);
@@ -117,12 +119,12 @@ export default function StoryInput({ onGenerated, busy }: Props) {
   return (
     <div className="flex flex-col gap-2 p-3">
       <label htmlFor="story" className="text-sm font-medium">
-        你的故事
+        {t('storyInput.label')}
       </label>
       <textarea
         id="story"
         className="min-h-[160px] w-full resize-y rounded border border-gray-300 p-2 text-sm outline-none focus:border-blue-500"
-        placeholder="用一段话描述你的故事或短视频创意…"
+        placeholder={t('storyInput.placeholder')}
         value={text}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -137,7 +139,7 @@ export default function StoryInput({ onGenerated, busy }: Props) {
       {/* Issue #36：估算输入 token + 超长截断/分批提示（仅供参考） */}
       {text.trim() && (
         <div className="text-[11px] text-gray-500">
-          约 {estimateTokens(text)} input tokens（仅供参考）
+          {t('storyInput.tokenEstimate', { tokens: estimateTokens(text) })}
           {longStoryWarning(text) && (
             <span className="ml-1 text-amber-600">{longStoryWarning(text)}</span>
           )}
@@ -146,7 +148,7 @@ export default function StoryInput({ onGenerated, busy }: Props) {
       <OneTimeKeyInput
         oneTimeKey={oneTimeKey}
         className="w-full rounded border border-amber-300 p-2 text-sm outline-none focus:border-amber-500"
-        placeholder="本次使用的 API Key（已关闭保存，不落盘）"
+        placeholder={t('storyInput.tempKeyPlaceholder')}
       />
       <button
         type="button"
@@ -154,7 +156,7 @@ export default function StoryInput({ onGenerated, busy }: Props) {
         disabled={busy}
         className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {busy ? '生成中…' : '生成分镜'}
+        {busy ? t('common.generating') : t('storyInput.generate')}
       </button>
       {notice && <p className="text-xs text-gray-700">{notice}</p>}
     </div>

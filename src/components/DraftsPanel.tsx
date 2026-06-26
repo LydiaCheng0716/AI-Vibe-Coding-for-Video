@@ -8,6 +8,7 @@ import {
   type ProjectDraftItem,
 } from '../services/projectDrafts';
 import { useProjectStore } from '../sidepanel/projectStore';
+import { useT } from '../i18n';
 
 interface Props {
   /** 当前项目（可保存为草稿）。 */
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function DraftsPanel({ project }: Props) {
+  const t = useT();
   const [drafts, setDrafts] = useState<ProjectDraftItem[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -24,7 +26,7 @@ export default function DraftsPanel({ project }: Props) {
     try {
       setDrafts(await listProjectDrafts());
     } catch {
-      setNotice('读取草稿失败。');
+      setNotice(t('drafts.loadFailed'));
     }
   }
 
@@ -36,7 +38,7 @@ export default function DraftsPanel({ project }: Props) {
     if (!project) return;
     const r = await saveProjectDraft(project);
     if (r.ok) {
-      setNotice('已保存为草稿');
+      setNotice(t('drafts.saved'));
       await reload();
     } else {
       setNotice(r.error.message);
@@ -46,12 +48,12 @@ export default function DraftsPanel({ project }: Props) {
   async function onOpenDraft(id: string) {
     const p = await openProjectDraft(id);
     if (!p) {
-      setNotice('草稿不存在。');
+      setNotice(t('drafts.missing'));
       await reload();
       return;
     }
     const switched = await replaceProject(p);
-    setNotice(switched.ok ? '已打开草稿' : `打开失败：${switched.error.message}`);
+    setNotice(switched.ok ? t('drafts.opened') : t('drafts.openFailed', { message: switched.error.message }));
   }
 
   async function onDelete(id: string) {
@@ -69,7 +71,7 @@ export default function DraftsPanel({ project }: Props) {
           className="text-sm font-semibold"
           aria-expanded={open}
         >
-          历史草稿（{drafts.length}）{open ? ' ▾' : ' ▸'}
+          {t('drafts.title', { n: drafts.length })}{open ? ' ▾' : ' ▸'}
         </button>
         <button
           type="button"
@@ -77,13 +79,13 @@ export default function DraftsPanel({ project }: Props) {
           disabled={!project}
           className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
         >
-          保存当前为草稿
+          {t('drafts.saveCurrent')}
         </button>
       </div>
       {open && (
         <>
           {drafts.length === 0 ? (
-            <p className="text-[11px] text-gray-400">暂无草稿。生成分镜后点「保存当前为草稿」。</p>
+            <p className="text-[11px] text-gray-400">{t('drafts.empty')}</p>
           ) : (
             drafts.map((d) => (
               <div key={d.id} className="flex items-center gap-2 rounded border border-gray-100 p-1.5">
@@ -93,14 +95,14 @@ export default function DraftsPanel({ project }: Props) {
                   onClick={() => onOpenDraft(d.id)}
                   className="shrink-0 rounded bg-blue-600 px-2 py-0.5 text-[11px] text-white hover:bg-blue-700"
                 >
-                  打开
+                  {t('drafts.open')}
                 </button>
                 <button
                   type="button"
                   onClick={() => onDelete(d.id)}
                   className="shrink-0 rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50"
                 >
-                  删除
+                  {t('common.delete')}
                 </button>
               </div>
             ))

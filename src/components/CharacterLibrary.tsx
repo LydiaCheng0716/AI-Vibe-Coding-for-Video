@@ -6,10 +6,10 @@ import {
   removeCharacterLibraryItem,
   libraryItemToCharacter,
   CHARACTER_CATEGORIES,
-  CHARACTER_CATEGORY_LABELS,
   type CharacterCategory,
   type CharacterLibraryItem,
 } from '../services/characterLibrary';
+import { useT } from '../i18n';
 
 interface Props {
   /** 外部（存入库）触发的刷新信号。 */
@@ -18,11 +18,12 @@ interface Props {
   onUse: (character: Omit<Character, 'id'>) => void;
 }
 
-function displayName(item: CharacterLibraryItem): string {
-  return item.name || '未命名角色';
+function categoryLabel(key: CharacterCategory, t: (key: string) => string): string {
+  return t(`character.category.${key}`);
 }
 
 export default function CharacterLibrary({ refreshKey, onUse }: Props) {
+  const t = useT();
   const [items, setItems] = useState<CharacterLibraryItem[]>([]);
   const [filter, setFilter] = useState<CharacterCategory | 'all'>('all');
   const [notice, setNotice] = useState<string | null>(null);
@@ -34,7 +35,7 @@ export default function CharacterLibrary({ refreshKey, onUse }: Props) {
         if (on) setItems(list);
       })
       .catch(() => {
-        if (on) setNotice('读取角色库失败。');
+        if (on) setNotice(t('characterLibrary.loadFailed'));
       });
     return () => {
       on = false;
@@ -62,13 +63,13 @@ export default function CharacterLibrary({ refreshKey, onUse }: Props) {
   return (
     <div className="flex flex-col gap-2 rounded border border-gray-200 p-2">
       <div className="flex flex-wrap items-center gap-1">
-        <span className="text-xs font-medium text-gray-700">角色库</span>
+        <span className="text-xs font-medium text-gray-700">{t('characterLibrary.title')}</span>
         <button
           type="button"
           onClick={() => setFilter('all')}
           className={`rounded-full px-2 py-0.5 text-[11px] ${filter === 'all' ? 'bg-blue-600 text-white' : 'border border-gray-300'}`}
         >
-          全部
+          {t('characterLibrary.all')}
         </button>
         {CHARACTER_CATEGORIES.map((cat) => (
           <button
@@ -77,19 +78,19 @@ export default function CharacterLibrary({ refreshKey, onUse }: Props) {
             onClick={() => setFilter(cat)}
             className={`rounded-full px-2 py-0.5 text-[11px] ${filter === cat ? 'bg-blue-600 text-white' : 'border border-gray-300'}`}
           >
-            {CHARACTER_CATEGORY_LABELS[cat]}
+            {categoryLabel(cat, t)}
           </button>
         ))}
       </div>
 
       {shown.length === 0 ? (
-        <p className="text-[11px] text-gray-400">暂无角色，可在上方角色卡「存入角色库」。</p>
+        <p className="text-[11px] text-gray-400">{t('characterLibrary.empty')}</p>
       ) : (
         shown.map((item) => (
           <div key={item.id} className="flex items-center gap-2 rounded border border-gray-100 p-1.5">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium">{displayName(item)}</p>
-              <p className="truncate text-[11px] text-gray-500">{item.appearance || '（无外观描述）'}</p>
+              <p className="truncate text-xs font-medium">{item.name || t('characterLibrary.unnamed')}</p>
+              <p className="truncate text-[11px] text-gray-500">{item.appearance || t('characterLibrary.noAppearance')}</p>
             </div>
             <select
               className="rounded border border-gray-300 p-0.5 text-[11px]"
@@ -98,7 +99,7 @@ export default function CharacterLibrary({ refreshKey, onUse }: Props) {
             >
               {CHARACTER_CATEGORIES.map((cat) => (
                 <option key={cat} value={cat}>
-                  {CHARACTER_CATEGORY_LABELS[cat]}
+                  {categoryLabel(cat, t)}
                 </option>
               ))}
             </select>
@@ -107,14 +108,14 @@ export default function CharacterLibrary({ refreshKey, onUse }: Props) {
               onClick={() => onUse(libraryItemToCharacter(item))}
               className="shrink-0 rounded bg-blue-600 px-2 py-0.5 text-[11px] text-white hover:bg-blue-700"
             >
-              用此角色
+              {t('characterLibrary.use')}
             </button>
             <button
               type="button"
               onClick={() => onDelete(item.id)}
               className="shrink-0 rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50"
             >
-              删除
+              {t('common.delete')}
             </button>
           </div>
         ))
