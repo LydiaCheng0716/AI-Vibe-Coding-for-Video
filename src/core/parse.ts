@@ -98,6 +98,118 @@ function tryParseObject(raw: string): unknown | null {
   return null;
 }
 
+function readJsonStringLiteral(text: string, start: number): { value: string; end: number } | null {
+  if (text[start] !== '"') return null;
+  let value = '';
+  let esc = false;
+  for (let i = start + 1; i < text.length; i++) {
+    const ch = text[i];
+    if (esc) {
+      value += ch;
+      esc = false;
+      continue;
+    }
+    if (ch === '\\') {
+      esc = true;
+      continue;
+    }
+    if (ch === '"') return { value, end: i };
+    value += ch;
+  }
+  return null;
+}
+
+function skipWhitespace(text: string, start: number): number {
+  let i = start;
+  while (i < text.length && /\s/.test(text[i])) i++;
+  return i;
+}
+
+function findShotsArrayStart(text: string): number {
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '"') continue;
+    const literal = readJsonStringLiteral(text, i);
+    if (!literal) return -1;
+    i = literal.end;
+    if (literal.value !== 'shots') continue;
+    const colon = skipWhitespace(text, i + 1);
+    if (text[colon] !== ':') continue;
+    const arr = skipWhitespace(text, colon + 1);
+    return text[arr] === '[' ? arr : -1;
+  }
+  return -1;
+}
+
+function pushParsedJsonValue(out: unknown[], raw: string): void {
+  const text = raw.trim();
+  if (!text) return;
+  try {
+    out.push(JSON.parse(text));
+  } catch {
+    /* 半截或异常值：增量解析不抛错，等待最终 parseStoryboard 权威校验。 */
+  }
+}
+
+/**
+ * 从不完整的累积 JSON 文本中提取 shots 数组里已经完整闭合的顶层元素。
+ * 只做语法级前缀提取，不做业务字段校验；最终结果仍由 parseStoryboard 权威解析。
+ */
+export function extractShotsPrefix(buffer: string): unknown[] {
+  if (typeof buffer !== 'string' || buffer.length === 0) return [];
+  const arrayStart = findShotsArrayStart(buffer);
+  if (arrayStart < 0) return [];
+
+  const out: unknown[] = [];
+  let valueStart = -1;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+
+  for (let i = arrayStart + 1; i < buffer.length; i++) {
+    const ch = buffer[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+
+    if (valueStart < 0 && !/\s/.test(ch) && ch !== ',' && ch !== ']') {
+      valueStart = i;
+    }
+
+    if (ch === '"') {
+      inStr = true;
+      continue;
+    }
+    if (ch === '{' || ch === '[') {
+      depth++;
+      continue;
+    }
+    if (ch === '}') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (ch === ']') {
+      if (depth === 0) {
+        if (valueStart >= 0) pushParsedJsonValue(out, buffer.slice(valueStart, i));
+        return out;
+      }
+      depth--;
+      continue;
+    }
+    if (ch === ',' && depth === 0) {
+      if (valueStart >= 0) pushParsedJsonValue(out, buffer.slice(valueStart, i));
+      valueStart = -1;
+    }
+  }
+
+  if (valueStart >= 0 && depth === 0 && !inStr) {
+    pushParsedJsonValue(out, buffer.slice(valueStart));
+  }
+  return out;
+}
+
 // ---- 字段校验（ADR-6(3)）----
 
 function isObj(v: unknown): v is Record<string, unknown> {

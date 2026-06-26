@@ -87,7 +87,9 @@ export default function StoryInput({ onGenerated, busy }: Props) {
         { story: text, ...(oneTimeKey.apiKey ? { apiKey: oneTimeKey.apiKey } : {}) },
         undefined,
         (p) => {
-          if (p.phase !== 'done') setNotice(p.message);
+          if (p.phase !== 'done') {
+            setNotice(typeof p.shotsReady === 'number' ? `已生成 ${p.shotsReady} 个镜头…` : p.message);
+          }
         },
       );
       if (r.ok) {

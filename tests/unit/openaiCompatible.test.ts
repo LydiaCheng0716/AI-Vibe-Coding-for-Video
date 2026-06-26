@@ -18,6 +18,26 @@ function okCompletion(content = '{"shots":[]}'): Response {
   return jsonResponse({ choices: [{ message: { content } }] });
 }
 
+function sse(payload: unknown): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function streamResponse(chunks: string[], init: { status?: number; headers?: HeadersInit } = {}): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
+        controller.close();
+      },
+    }),
+    {
+      status: init.status ?? 200,
+      headers: init.headers ?? { 'Content-Type': 'text/event-stream' },
+    },
+  );
+}
+
 const req = {
   system: 'sys',
   user: 'usr',
@@ -112,6 +132,59 @@ describe('openaiCompatible: response_format 兼容回退（api-spec §4.2）', (
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const body2 = JSON.parse((fetchSpy.mock.calls[1][1] as RequestInit).body as string);
     expect(body2.response_format).toBeUndefined();
+  });
+});
+
+describe('openaiCompatible: completeStream（Issue #69 SSE）', () => {
+  it('发送 stream 请求，逐帧回调 delta，返回完整文本，并记录 usage', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      streamResponse([
+        sse({ choices: [{ delta: { content: '{"shots":[' } }] }),
+        sse({ choices: [{ delta: { content: '{"summary":"1"}' } }] }).slice(0, 18),
+        sse({ choices: [{ delta: { content: '{"summary":"1"}' } }] }).slice(18) +
+          sse({ choices: [{ delta: { content: ']}' } }] }),
+        sse({ choices: [], usage: { prompt_tokens: 9, completion_tokens: 7 } }),
+        'data: [DONE]\n\n',
+      ]),
+    );
+    const provider = createOpenAiCompatibleProvider('https://api.moonshot.cn/v1');
+    const deltas: string[] = [];
+
+    const out = await provider.completeStream?.(req, (delta) => deltas.push(delta));
+
+    expect(out).toBe('{"shots":[{"summary":"1"}]}');
+    expect(deltas).toEqual(['{"shots":[', '{"summary":"1"}', ']}']);
+    expect(provider.lastUsage?.()).toEqual({ input: 9, output: 7 });
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.stream).toBe(true);
+    expect(body.stream_options).toEqual({ include_usage: true });
+    expect(body.response_format).toEqual({ type: 'json_object' });
+  });
+
+  it('流式 400 unsupported response_format → 去字段重试一次', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        jsonResponse({ error: { message: 'unsupported parameter: response_format' } }, { status: 400 }),
+      )
+      .mockResolvedValueOnce(streamResponse([sse({ choices: [{ delta: { content: '{}' } }] }), 'data: [DONE]\n\n']));
+
+    await expect(createOpenAiCompatibleProvider().completeStream?.(req, () => {})).resolves.toBe('{}');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const body2 = JSON.parse((fetchSpy.mock.calls[1][1] as RequestInit).body as string);
+    expect(body2.response_format).toBeUndefined();
+    expect(body2.stream).toBe(true);
+  });
+
+  it('非 2xx 仍映射 ProviderCallError', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ e: 1 }), { status: 429, headers: { 'Retry-After': '2' } }),
+    );
+
+    await expect(createOpenAiCompatibleProvider().completeStream?.(req, () => {})).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+      retryAfterMs: 2000,
+    });
   });
 });
 

@@ -26,7 +26,11 @@ function isUnsupportedParam(status: number, body: string): boolean {
   return /(unsupported|unknown|unrecognized|invalid)[\s\S]*(parameter|field|argument)/i.test(body);
 }
 
-function buildBody(req: CompleteRequest, withResponseFormat: boolean): Record<string, unknown> {
+function buildBody(
+  req: CompleteRequest,
+  withResponseFormat: boolean,
+  stream = false,
+): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: req.model.trim(), // 去空格，避免厂商 400（kimi LOW）
     messages: [
@@ -36,6 +40,10 @@ function buildBody(req: CompleteRequest, withResponseFormat: boolean): Record<st
     max_tokens: req.maxTokens,
   };
   if (withResponseFormat) body.response_format = { type: 'json_object' };
+  if (stream) {
+    body.stream = true;
+    body.stream_options = { include_usage: true };
+  }
   return body;
 }
 
@@ -60,7 +68,7 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
   const url = endpoint(baseUrl);
   let lastUsage: LlmUsage | null = null;
 
-  async function post(req: CompleteRequest, withResponseFormat: boolean): Promise<Response> {
+  async function postBody(req: CompleteRequest, body: Record<string, unknown>): Promise<Response> {
     // 明文 Key 只在本次请求构造的瞬间存在，不赋值给任何持久引用（ADR-1）。
     // 优先用编排层已解密并传入的 Key，避免二次解密（ADR-1 最小作用域）。
     const apiKey = req.apiKey ?? (await getApiKeyForRequest());
@@ -71,9 +79,17 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildBody(req, withResponseFormat)),
+      body: JSON.stringify(body),
       signal: req.signal,
     });
+  }
+
+  async function post(req: CompleteRequest, withResponseFormat: boolean): Promise<Response> {
+    return postBody(req, buildBody(req, withResponseFormat));
+  }
+
+  async function postStream(req: CompleteRequest, withResponseFormat: boolean): Promise<Response> {
+    return postBody(req, buildBody(req, withResponseFormat, true));
   }
 
   return {
@@ -139,7 +155,99 @@ export function createOpenAiCompatibleProvider(baseUrl?: string): LlmProvider {
       lastUsage = parseUsage(json);
       return content;
     },
+    async completeStream(req: CompleteRequest, onText: (delta: string) => void): Promise<string> {
+      lastUsage = null;
+      let res: Response;
+      try {
+        res = await postStream(req, true);
+        if (!res.ok) {
+          const peek = await res.clone().text();
+          if (isUnsupportedParam(res.status, peek)) {
+            res = await postStream(req, false);
+          }
+        }
+      } catch (e) {
+        throw mapFetchError(e);
+      }
+
+      if (!res.ok) {
+        const { code, retriable } = mapHttpStatus(res.status);
+        const retryAfterMs = res.status === 429 ? parseRetryAfter(res) : undefined;
+        throw new ProviderCallError(code, providerMessage(code), retriable, retryAfterMs);
+      }
+      if (!res.body) {
+        throw new ProviderCallError('NETWORK_ERROR', '网络或服务端异常，请稍后重试。', true);
+      }
+
+      try {
+        return await readSseCompletion(res.body, onText, (usage) => {
+          lastUsage = usage;
+        });
+      } catch (e) {
+        throw mapFetchError(e);
+      }
+    },
   };
+}
+
+async function readSseCompletion(
+  body: ReadableStream<Uint8Array>,
+  onText: (delta: string) => void,
+  onUsage: (usage: LlmUsage | null) => void,
+): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = '';
+  let full = '';
+
+  const consumeEvent = (event: string): boolean => {
+    const data = event
+      .split(/\r?\n/)
+      .map((line) => line.trimEnd())
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n');
+    if (!data) return false;
+    if (data === '[DONE]') return true;
+
+    let json: unknown;
+    try {
+      json = JSON.parse(data);
+    } catch {
+      return false;
+    }
+
+    const usage = parseUsage(json);
+    if (usage) onUsage(usage);
+    const delta = (
+      json as { choices?: Array<{ delta?: { content?: unknown }; finish_reason?: string }> }
+    )?.choices?.[0]?.delta?.content;
+    if (typeof delta === 'string' && delta.length > 0) {
+      full += delta;
+      onText(delta);
+    }
+    const finishReason = (
+      json as { choices?: Array<{ delta?: { content?: unknown }; finish_reason?: string }> }
+    )?.choices?.[0]?.finish_reason;
+    if (finishReason === 'length') {
+      throw new ProviderCallError('BAD_RESPONSE_FORMAT', '生成结果被截断，请重试。', false);
+    }
+    return false;
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    const parts = pending.split(/\r?\n\r?\n/);
+    pending = parts.pop() ?? '';
+    for (const event of parts) {
+      if (consumeEvent(event)) return full;
+    }
+  }
+  pending += decoder.decode();
+  if (pending.trim() && consumeEvent(pending)) return full;
+  return full;
 }
 
 /** 解析 429 Retry-After（秒 或 HTTP-date）→ ms；无法解析返回 undefined。 */

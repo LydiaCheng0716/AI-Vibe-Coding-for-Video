@@ -165,6 +165,82 @@ describe('generateStoryboard: 成功与出站失败', () => {
     if (!r.ok) expect(r.error.code).toBe('BAD_RESPONSE_FORMAT');
   });
 
+  it('流式成功 → 逐镜上报 shotsReady，最终仍返回完整 Project', async () => {
+    const shot1 = JSON.stringify({ summary: '1', shotSize: '近景', cameraMovement: '推', durationSuggestion: '2s', prompt: 'p1' });
+    const shot2 = JSON.stringify({ summary: '2', shotSize: '中景', cameraMovement: '摇', durationSuggestion: '2s', prompt: 'p2' });
+    const shot3 = JSON.stringify({ summary: '3', shotSize: '远景', cameraMovement: '固定', durationSuggestion: '2s', prompt: 'p3' });
+    const full = `{"shots":[${shot1},${shot2},${shot3}]}`;
+    const provider: LlmProvider = {
+      complete: vi.fn(),
+      probe: vi.fn(),
+      completeStream: vi.fn(async (_req, onText) => {
+        onText(`{"shots":[${shot1},`);
+        onText(`${shot2},`);
+        onText(`${shot3}]}`);
+        return full;
+      }),
+    };
+    const shotsReady: number[] = [];
+    const r = await generateStoryboardWithUsage(
+      { story: STORY },
+      makeDeps({ createProvider: vi.fn().mockReturnValue(provider) }),
+      {},
+      (p) => {
+        if (typeof p.shotsReady === 'number') shotsReady.push(p.shotsReady);
+      },
+    );
+
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.project.shots).toHaveLength(3);
+    expect(shotsReady).toEqual([1, 2, 3]);
+    expect(provider.complete).not.toHaveBeenCalled();
+  });
+
+  it('provider 无 completeStream → 走非流式 complete', async () => {
+    const complete = vi.fn().mockResolvedValue(goodShots());
+    const provider: LlmProvider = { complete, probe: vi.fn() };
+    const r = await generateStoryboardWithUsage(
+      { story: STORY },
+      makeDeps({ createProvider: vi.fn().mockReturnValue(provider) }),
+    );
+
+    expect(r.ok).toBe(true);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('流式普通错误 → fallback 到非流式 complete', async () => {
+    const provider: LlmProvider = {
+      complete: vi.fn().mockResolvedValue(goodShots()),
+      probe: vi.fn(),
+      completeStream: vi.fn().mockRejectedValue(new ProviderCallError('BAD_RESPONSE_FORMAT', 'stream bad', false)),
+    };
+
+    const r = await generateStoryboardWithUsage(
+      { story: STORY },
+      makeDeps({ createProvider: vi.fn().mockReturnValue(provider) }),
+    );
+
+    expect(r.ok).toBe(true);
+    expect(provider.completeStream).toHaveBeenCalledTimes(1);
+    expect(provider.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('流式完整文本仍由 parseStoryboard 权威校验', async () => {
+    const provider: LlmProvider = {
+      complete: vi.fn(),
+      probe: vi.fn(),
+      completeStream: vi.fn().mockResolvedValue(JSON.stringify({ shots: [JSON.parse(goodShots()).shots[0]] })),
+    };
+    const r = await generateStoryboardWithUsage(
+      { story: STORY },
+      makeDeps({ createProvider: vi.fn().mockReturnValue(provider) }),
+    );
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe('BAD_RESPONSE_FORMAT');
+    expect(provider.complete).not.toHaveBeenCalled();
+  });
+
   it('成功生成的项目注入了人物一致性（TASK-005 接线）', async () => {
     const withChar = JSON.stringify({
       characters: [{ name: '小红', appearance: '扎马尾的女孩' }],
