@@ -22,6 +22,7 @@ function InsertBar({ onInsert, disabled }: { onInsert: (desc: string) => void; d
   return (
     <div className="flex items-center gap-1">
       <input
+        aria-label="插入镜头描述"
         className="flex-1 rounded border border-dashed border-gray-300 p-1 text-[11px] outline-none focus:border-blue-400"
         placeholder="在此插入镜头：可选一句描述，留空则插入空白镜头"
         value={desc}
@@ -29,6 +30,7 @@ function InsertBar({ onInsert, disabled }: { onInsert: (desc: string) => void; d
       />
       <button
         type="button"
+        aria-label="在当前位置插入镜头"
         onClick={() => {
           onInsert(desc);
           setDesc('');
@@ -115,6 +117,7 @@ function TransitionBar({
       <div className="flex items-center gap-1">
         <span className="text-[11px] text-gray-400">转场 ↧</span>
         <select
+          aria-label={`镜头 ${prev.index} 到镜头 ${next.index} 的转场类型`}
           className="rounded border border-gray-300 p-0.5 text-[11px]"
           value={type}
           onChange={(e) => setType(e.target.value)}
@@ -127,6 +130,7 @@ function TransitionBar({
         </select>
         <button
           type="button"
+          aria-label={`${t ? '重新生成' : '生成'} 镜头 ${prev.index} 到镜头 ${next.index} 的转场说明`}
           onClick={onGenerate}
           disabled={busy || gen}
           className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-white disabled:opacity-50"
@@ -135,10 +139,20 @@ function TransitionBar({
         </button>
         {t && (
           <>
-            <button type="button" onClick={onCopy} className="text-[11px] text-blue-600 hover:underline">
+            <button
+              type="button"
+              aria-label={`复制 镜头 ${prev.index} 到镜头 ${next.index} 的转场说明`}
+              onClick={onCopy}
+              className="text-[11px] text-blue-600 hover:underline"
+            >
               复制
             </button>
-            <button type="button" onClick={onClear} className="text-[11px] text-red-600 hover:underline">
+            <button
+              type="button"
+              aria-label={`清除 镜头 ${prev.index} 到镜头 ${next.index} 的转场说明`}
+              onClick={onClear}
+              className="text-[11px] text-red-600 hover:underline"
+            >
               清除
             </button>
           </>
@@ -147,6 +161,7 @@ function TransitionBar({
       {t && (
         <>
           <input
+            aria-label={`镜头 ${prev.index} 到镜头 ${next.index} 的中文转场说明`}
             className="w-full rounded border border-gray-300 p-1 text-[11px]"
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -154,6 +169,7 @@ function TransitionBar({
           />
           {bilingual && (
             <input
+              aria-label={`镜头 ${prev.index} 到镜头 ${next.index} 的英文转场说明`}
               className="w-full rounded border border-gray-300 p-1 text-[11px]"
               value={noteEn}
               placeholder="English transition note"
@@ -361,6 +377,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
         {history.length > 0 && (
           <button
             type="button"
+            aria-label={`撤销上一步结构操作，当前 ${history.length} 步可撤销`}
             onClick={onUndo}
             disabled={disabled}
             className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
@@ -371,12 +388,14 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
       </div>
       <OneTimeKeyInput
         oneTimeKey={oneTimeKey}
+        aria-label="一次性 API Key，用于批量生成或插入即时生成"
         className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
         placeholder="一次性 API Key（已关闭保存，用于批量/插入即时生成，不落盘）"
       />
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
+          aria-label="批量生成所有缺失的首帧提示词"
           onClick={onBatchFirstFrames}
           disabled={disabled}
           className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
@@ -385,6 +404,7 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
         </button>
         <button
           type="button"
+          aria-label="批量生成相邻镜头转场提示词"
           onClick={onBatchTransitions}
           disabled={disabled}
           className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
@@ -396,40 +416,63 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
       {notice && <p className="text-xs text-gray-600">{notice}</p>}
 
       <InsertBar onInsert={(d) => onInsert(0, d)} disabled={disabled} />
-      {ordered.map((s, i) => (
-        <div key={s.id} className="flex flex-col gap-3">
-          <div
-            draggable={!disabled}
-            onDragStart={() => setDragId(s.id)}
-            onDragEnd={() => setDragId(null)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (dragId && dragId !== s.id) void onMove(dragId, i);
-              setDragId(null);
-            }}
-            className={dragId === s.id ? 'opacity-50' : undefined}
-          >
-            <ShotCard
-              shot={s}
-              project={project}
-              busy={disabled}
-              persistApiKey={persistApiKey}
-              onDelete={() => void onDelete(s.id)}
-            />
+      <div role="list" aria-label="分镜列表" className="flex flex-col gap-3">
+        {ordered.map((s, i) => (
+          <div key={s.id} role="listitem" className="flex flex-col gap-3">
+            <div
+              draggable={!disabled}
+              aria-label={`镜头 ${s.index}，可拖拽或用上移/下移按钮重排`}
+              onDragStart={() => setDragId(s.id)}
+              onDragEnd={() => setDragId(null)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragId && dragId !== s.id) void onMove(dragId, i);
+                setDragId(null);
+              }}
+              className={dragId === s.id ? 'opacity-50' : undefined}
+            >
+              <div className="mb-1 flex items-center justify-end gap-1">
+                <button
+                  type="button"
+                  aria-label={`上移 镜头 ${s.index}`}
+                  onClick={() => void onMove(s.id, i - 1)}
+                  disabled={disabled || i === 0}
+                  className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50 disabled:opacity-50"
+                >
+                  上移
+                </button>
+                <button
+                  type="button"
+                  aria-label={`下移 镜头 ${s.index}`}
+                  onClick={() => void onMove(s.id, i + 1)}
+                  disabled={disabled || i === ordered.length - 1}
+                  className="rounded border border-gray-300 px-2 py-0.5 text-[11px] hover:bg-gray-50 disabled:opacity-50"
+                >
+                  下移
+                </button>
+              </div>
+              <ShotCard
+                shot={s}
+                project={project}
+                busy={disabled}
+                persistApiKey={persistApiKey}
+                onDelete={() => void onDelete(s.id)}
+              />
+            </div>
+            {i < ordered.length - 1 && (
+              <TransitionBar
+                prev={s}
+                next={ordered[i + 1]}
+                lang={project.params.outputLanguage}
+                busy={disabled}
+                oneTimeKey={oneTimeKey}
+              />
+            )}
+            <InsertBar onInsert={(d) => onInsert(i + 1, d)} disabled={disabled} />
           </div>
-          {i < ordered.length - 1 && (
-            <TransitionBar
-              prev={s}
-              next={ordered[i + 1]}
-              lang={project.params.outputLanguage}
-              busy={disabled}
-              oneTimeKey={oneTimeKey}
-            />
-          )}
-          <InsertBar onInsert={(d) => onInsert(i + 1, d)} disabled={disabled} />
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

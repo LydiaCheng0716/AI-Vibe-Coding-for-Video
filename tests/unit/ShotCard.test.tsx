@@ -41,7 +41,7 @@ describe('ShotCard bilingual auto translation', () => {
       <ShotCard shot={project.shots[0]} project={project} busy={false} persistApiKey onDelete={() => {}} />
     ));
 
-    await user.click(await screen.findByRole('button', { name: '编辑' }));
+    await user.click(await screen.findByRole('button', { name: '编辑 镜头 1' }));
     await user.click(screen.getByRole('checkbox', { name: /编辑后自动翻译同步另一语言/ }));
     const [zhTextarea, enTextarea] = screen.getAllByRole('textbox') as HTMLTextAreaElement[];
 
@@ -67,7 +67,7 @@ describe('ShotCard bilingual auto translation', () => {
       <ShotCard shot={project.shots[0]} project={project} busy={false} persistApiKey onDelete={() => {}} />
     ));
 
-    await user.click(await screen.findByRole('button', { name: '编辑' }));
+    await user.click(await screen.findByRole('button', { name: '编辑 镜头 1' }));
     await user.click(screen.getByRole('checkbox', { name: /编辑后自动翻译同步另一语言/ }));
     const [zhTextarea, enTextarea] = screen.getAllByRole('textbox') as HTMLTextAreaElement[];
 
@@ -93,7 +93,7 @@ describe('ShotCard bilingual auto translation', () => {
       <ShotCard shot={project.shots[0]} project={project} busy={false} persistApiKey onDelete={() => {}} />
     ));
 
-    await user.click(await screen.findByRole('button', { name: '编辑' }));
+    await user.click(await screen.findByRole('button', { name: '编辑 镜头 1' }));
     const checkbox = screen.getByRole('checkbox', { name: /编辑后自动翻译同步另一语言/ }) as HTMLInputElement;
     await waitFor(() => expect(checkbox.checked).toBe(true));
 
