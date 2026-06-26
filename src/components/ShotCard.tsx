@@ -6,7 +6,7 @@ import { copyToClipboard } from '../services/clipboard';
 import { shotSizeOptions, cameraMovementOptions, DURATION_OPTIONS, withCurrent } from '../core/shotParams';
 import { useProjectStore } from '../sidepanel/projectStore';
 import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
-import { getSettings, saveSettings } from '../services/storage';
+import { getSettings, updateSettings } from '../services/storage';
 
 /** 撤销栈上限：避免多轮重写累积过多 Shot 占内存（Kimi minor）。 */
 const UNDO_MAX = 20;
@@ -64,8 +64,8 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
   async function onAutoSyncChange(checked: boolean) {
     autoSyncDirtyRef.current = true;
     setAutoSync(checked);
-    const settings = await getSettings();
-    const saved = await saveSettings({ ...settings, autoTranslateSync: checked });
+    // 串行化 RMW，避免与其它偏好并发写交错丢更新（Kimi P2）。
+    const saved = await updateSettings({ autoTranslateSync: checked });
     if (!saved.ok) setNotice(saved.error.message);
   }
 

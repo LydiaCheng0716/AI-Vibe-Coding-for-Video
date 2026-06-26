@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import type { Project, Shot, Transition } from '../core/models';
+import { useEffect, useRef, useState } from 'react';
+import { err, type Project, type Shot, type Transition } from '../core/models';
 import ShotCard from './ShotCard';
 import { deleteShotById, insertShotAt, moveShot, makeBlankShot } from '../core/shotOps';
 import { rewriteShot, generateFirstFrame, generateTransition, type FirstFrameResult } from '../services/generation';
@@ -177,6 +177,14 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
   const [working, setWorking] = useState(false);
   const workingRef = useRef(false);
   const [batchProgress, setBatchProgress] = useState<string | null>(null);
+  // 卸载后中止批量：避免关闭面板后仍调用 LLM 消耗额度 / setState（Kimi minor）。
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
 
   // 不在 0 镜头时返回 null：删到空仍需保留「插入/撤销」入口，避免删空后无法恢复（对抗自检）。
   const ordered = [...project.shots].sort((a, b) => a.index - b.index);
@@ -197,7 +205,8 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
       const summary = await runBatch<Shot, FirstFrameResult>(
         ordered,
         async (shot) => {
-          if (shot.firstFramePrompt) return skipped('已存在首帧');
+          if (!aliveRef.current) return skipped('已取消');
+          if (shot.firstFramePrompt != null) return skipped('已存在首帧');
           const generated = await generateFirstFrame({
             shot,
             characters: project.characters,
@@ -208,10 +217,14 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
           if (!generated.ok) return generated;
           const saved = await updateShotFirstFrame(shot.id, generated.data);
           if (!saved.ok) return { ok: false, error: saved.error };
+          // store 在无项目/无匹配镜头时返回 ok(null)：未真正落库，不能记成功（Kimi minor）。
+          if (saved.data === null) return err('STORAGE_WRITE_FAILED', '未找到镜头，首帧未保存');
           return generated;
         },
         {
-          onProgress: (done, total) => setBatchProgress(`处理中 ${done}/${total}`),
+          onProgress: (done, total) => {
+            if (aliveRef.current) setBatchProgress(`处理中 ${done}/${total}`);
+          },
         },
       );
       setNotice(
@@ -239,7 +252,8 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
       const summary = await runBatch<{ prev: Shot; next: Shot }, Transition>(
         pairs,
         async ({ prev, next }) => {
-          if (prev.transitionToNext) return skipped('已存在转场');
+          if (!aliveRef.current) return skipped('已取消');
+          if (prev.transitionToNext != null) return skipped('已存在转场');
           const generated = await generateTransition({
             prevShot: prev,
             nextShot: next,
@@ -250,10 +264,14 @@ export default function ShotList({ project, busy, persistApiKey }: Props) {
           if (!generated.ok) return generated;
           const saved = await updateShotTransition(prev.id, generated.data);
           if (!saved.ok) return { ok: false, error: saved.error };
+          // 同上：ok(null) 表示未落库，不计成功（Kimi minor）。
+          if (saved.data === null) return err('STORAGE_WRITE_FAILED', '未找到镜头，转场未保存');
           return generated;
         },
         {
-          onProgress: (done, total) => setBatchProgress(`处理中 ${done}/${total}`),
+          onProgress: (done, total) => {
+            if (aliveRef.current) setBatchProgress(`处理中 ${done}/${total}`);
+          },
         },
       );
       setNotice(

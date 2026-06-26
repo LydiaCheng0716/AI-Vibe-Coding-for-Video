@@ -17,6 +17,7 @@ import { defaultSettings } from '../core/defaults';
 import { normalizeProject } from '../core/migrations';
 import { reinjectCharacterConsistency } from '../core/characters';
 import { reinjectGlobalStyle } from '../core/style';
+import { EXPORT_FORMATS, EXPORT_PROMPT_LANGS } from '../core/export';
 
 interface DraftRecord {
   text: string;
@@ -24,8 +25,6 @@ interface DraftRecord {
 }
 
 const WRITE_FAIL_MSG = '本地保存失败（可能空间不足），请重试。';
-const EXPORT_FORMATS = ['markdown', 'json', 'plaintext', 'csv', 'platform'] as const;
-const EXPORT_PROMPT_LANGS = ['zh', 'en', 'both'] as const;
 
 async function read<T>(key: string): Promise<T | undefined> {
   const got = await chrome.storage.local.get(key);
@@ -84,8 +83,34 @@ export async function getSettings(): Promise<Settings> {
   };
 }
 
+// 串行化设置「读-改-写」，避免多组件并发改不同偏好时互相覆盖（Kimi P2 RMW 竞态）。
+let settingsChain: Promise<unknown> = Promise.resolve();
+function withSettingsLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = settingsChain.then(fn, fn);
+  settingsChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 export async function saveSettings(settings: Settings): Promise<Result<void>> {
-  return write({ [STORAGE_KEYS.settings]: { ...settings, schemaVersion: SCHEMA_VERSION } });
+  return withSettingsLock(() =>
+    write({ [STORAGE_KEYS.settings]: { ...settings, schemaVersion: SCHEMA_VERSION } }),
+  );
+}
+
+/**
+ * 局部更新设置：在锁内 read-modify-write，合并 patch 后整写。
+ * 供 UI 偏好（导出格式/语言、自动翻译同步等）持久化，避免各自 getSettings→saveSettings 交错丢更新（Kimi P2）。
+ */
+export async function updateSettings(patch: Partial<Settings>): Promise<Result<void>> {
+  return withSettingsLock(async () => {
+    const current = await getSettings();
+    return write({
+      [STORAGE_KEYS.settings]: { ...current, ...patch, schemaVersion: SCHEMA_VERSION },
+    });
+  });
 }
 
 // ---- 当前分镜项目（TASK-003/004/005/006/007/008 共用）----

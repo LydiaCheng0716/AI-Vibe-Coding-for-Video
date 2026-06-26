@@ -5,6 +5,7 @@ import {
   clearDraft,
   getSettings,
   saveSettings,
+  updateSettings,
   saveCurrentProject,
   getCurrentProject,
   updateShotPrompt,
@@ -107,6 +108,22 @@ describe('storage: settings', () => {
     expect(old.autoTranslateSync).toBe(false);
     expect(old.exportFormat).toBe('markdown');
     expect(old.exportPromptLang).toBe('both');
+  });
+
+  it('updateSettings 局部合并且并发写不丢更新（Kimi P2：串行 RMW）', async () => {
+    await saveSettings(defaultSettings());
+    // 并发改不同偏好字段：串行化后两者都应保留。
+    await Promise.all([
+      updateSettings({ exportFormat: 'json' }),
+      updateSettings({ exportPromptLang: 'en' }),
+      updateSettings({ autoTranslateSync: true }),
+    ]);
+    const got = await getSettings();
+    expect(got.exportFormat).toBe('json');
+    expect(got.exportPromptLang).toBe('en');
+    expect(got.autoTranslateSync).toBe(true);
+    // 未触及字段保持默认，不被覆盖。
+    expect(got.persistApiKey).toBe(true);
   });
 });
 

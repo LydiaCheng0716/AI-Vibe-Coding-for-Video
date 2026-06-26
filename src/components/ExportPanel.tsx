@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Project } from '../core/models';
 import { exportProject, EXPORT_META, type ExportFormat, type ExportPromptLang } from '../core/export';
 import { copyToClipboard } from '../services/clipboard';
-import { getSettings, saveSettings } from '../services/storage';
+import { getSettings, updateSettings } from '../services/storage';
 
 interface Props {
   project: Project | null;
@@ -47,12 +47,12 @@ export default function ExportPanel({ project }: Props) {
   }, []);
 
   async function persistPrefs(next: { format: ExportFormat; promptLang: ExportPromptLang }) {
-    const settings = await getSettings();
-    await saveSettings({
-      ...settings,
+    // 串行化 RMW，失败要提示（Kimi P2）：避免并发交错丢更新、避免静默吞错。
+    const saved = await updateSettings({
       exportFormat: next.format,
       exportPromptLang: next.promptLang,
     });
+    if (!saved.ok) setNotice(saved.error.message);
   }
 
   function onFormatChange(value: ExportFormat) {
