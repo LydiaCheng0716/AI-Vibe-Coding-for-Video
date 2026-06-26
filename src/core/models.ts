@@ -41,6 +41,8 @@ export interface Settings {
   exportFormat?: ExportFormat;
   /** 导出面板上次选择的提示词语言（Issue #70）。 */
   exportPromptLang?: ExportPromptLang;
+  /** 可折叠面板收起记忆（Issue #85）。key 由面板声明，true = 收起。 */
+  panelCollapsed?: Record<string, boolean>;
   schemaVersion: number;
 }
 

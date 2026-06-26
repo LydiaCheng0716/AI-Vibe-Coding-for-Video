@@ -6,6 +6,7 @@ import { copyToClipboard } from '../services/clipboard';
 import CharacterLibrary from './CharacterLibrary';
 import { useProjectStore } from '../sidepanel/projectStore';
 import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
+import CollapsiblePanel from './CollapsiblePanel';
 import {
   saveCharacterToLibrary,
   CHARACTER_CATEGORIES,
@@ -36,8 +37,6 @@ export default function CharacterPanel({
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const oneTimeKey = useOneTimeKey();
-  // Issue #40：角色固定可选/可跳过——可收起整个角色区直达分镜。
-  const [collapsed, setCollapsed] = useState(false);
   // 角色库刷新信号：卡片「存入角色库」后 +1，触发库列表重载。
   const [libRefresh, setLibRefresh] = useState(0);
 
@@ -57,53 +56,40 @@ export default function CharacterPanel({
   }
 
   return (
-    <section className="flex flex-col gap-3 p-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">{t('character.title', { n: characters.length })}</h2>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setCollapsed((v) => !v)}
-            className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
-          >
-            {collapsed ? t('common.expand') : t('common.collapse')}
-          </button>
-          {!collapsed && (
-            <button
-              type="button"
-              onClick={onAdd}
-              disabled={adding}
-              className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
-            >
-              {adding ? t('character.adding') : t('character.add')}
-            </button>
-          )}
-        </div>
-      </div>
+    <CollapsiblePanel
+      title={t('character.title', { n: characters.length })}
+      persistKey="character"
+      className="flex flex-col gap-3 p-3"
+      contentClassName="flex flex-col gap-3"
+      headerRight={
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={adding}
+          className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+        >
+          {adding ? t('character.adding') : t('character.add')}
+        </button>
+      }
+    >
       {notice && <p className="text-xs text-red-600">{notice}</p>}
-      {collapsed ? (
-        <p className="text-[11px] text-gray-400">{t('character.collapsedHint')}</p>
-      ) : (
-        <>
-          <OneTimeKeyInput
-            oneTimeKey={oneTimeKey}
-            className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
-            placeholder={t('character.resuggestKeyPlaceholder')}
-          />
-          {characters.map((c) => (
-            <CharacterCard
-              key={c.id}
-              character={c}
-              story={story}
-              busy={busy}
-              oneTimeKey={oneTimeKey}
-              onSavedToLibrary={() => setLibRefresh((n) => n + 1)}
-            />
-          ))}
-          <CharacterLibrary refreshKey={libRefresh} onUse={onUseFromLibrary} />
-        </>
-      )}
-    </section>
+      <OneTimeKeyInput
+        oneTimeKey={oneTimeKey}
+        className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
+        placeholder={t('character.resuggestKeyPlaceholder')}
+      />
+      {characters.map((c) => (
+        <CharacterCard
+          key={c.id}
+          character={c}
+          story={story}
+          busy={busy}
+          oneTimeKey={oneTimeKey}
+          onSavedToLibrary={() => setLibRefresh((n) => n + 1)}
+        />
+      ))}
+      <CharacterLibrary refreshKey={libRefresh} onUse={onUseFromLibrary} />
+    </CollapsiblePanel>
   );
 }
 

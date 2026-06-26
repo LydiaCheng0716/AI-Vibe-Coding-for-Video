@@ -20,6 +20,9 @@ const zh = {
   'common.zh': '中文',
   'common.en': 'English',
 
+  'collapsible.expandAria': '展开 {title}',
+  'collapsible.collapseAria': '收起 {title}',
+
   'settings.title': '设置',
   'settings.providerTitle': 'LLM Provider（自带 Key）',
   'settings.preset': '预设（选中即填好 Base URL 与默认模型，可再手改）',

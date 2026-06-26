@@ -6,6 +6,7 @@ import {
   getSettings,
   saveSettings,
   updateSettings,
+  setPanelCollapsed,
   saveCurrentProject,
   getCurrentProject,
   updateShotPrompt,
@@ -124,6 +125,45 @@ describe('storage: settings', () => {
     expect(got.autoTranslateSync).toBe(true);
     // 未触及字段保持默认，不被覆盖。
     expect(got.persistApiKey).toBe(true);
+  });
+
+  it('panelCollapsed defaults empty and persists each panel collapse flag', async () => {
+    expect((await getSettings()).panelCollapsed).toEqual({});
+
+    await saveSettings({ ...defaultSettings(), exportFormat: 'json' });
+    const r = await setPanelCollapsed('character', true);
+    expect(r.ok).toBe(true);
+
+    const got = await getSettings();
+    expect(got.panelCollapsed).toEqual({ character: true });
+    expect(got.exportFormat).toBe('json');
+  });
+
+  it('setPanelCollapsed 串行 RMW：多面板并发记忆互不覆盖', async () => {
+    await saveSettings(defaultSettings());
+
+    await Promise.all([
+      setPanelCollapsed('character', true),
+      setPanelCollapsed('style', true),
+      setPanelCollapsed('drafts', false),
+    ]);
+
+    expect((await getSettings()).panelCollapsed).toEqual({
+      character: true,
+      style: true,
+      drafts: false,
+    });
+  });
+
+  it('normalizes legacy panelCollapsed values to boolean entries only', async () => {
+    await chrome.storage.local.set({
+      settings: {
+        provider: { kind: 'anthropic', model: 'x' },
+        panelCollapsed: { character: true, style: 'yes', drafts: false },
+      },
+    });
+
+    expect((await getSettings()).panelCollapsed).toEqual({ character: true, drafts: false });
   });
 });
 
