@@ -7,18 +7,18 @@ import {
   removeProjectDraft,
   type ProjectDraftItem,
 } from '../services/projectDrafts';
+import { useProjectStore } from '../sidepanel/projectStore';
 
 interface Props {
   /** 当前项目（可保存为草稿）。 */
   project: Project | null;
-  /** 打开草稿后恢复（App 置为 currentProject）；返回是否成功（落盘失败 → false）。 */
-  onOpen: (project: Project) => Promise<boolean>;
 }
 
-export default function DraftsPanel({ project, onOpen }: Props) {
+export default function DraftsPanel({ project }: Props) {
   const [drafts, setDrafts] = useState<ProjectDraftItem[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const { replaceProject } = useProjectStore();
 
   async function reload() {
     try {
@@ -50,8 +50,8 @@ export default function DraftsPanel({ project, onOpen }: Props) {
       await reload();
       return;
     }
-    const switched = await onOpen(p);
-    setNotice(switched ? '已打开草稿' : '打开失败：本地保存出错，请重试。');
+    const switched = await replaceProject(p);
+    setNotice(switched.ok ? '已打开草稿' : `打开失败：${switched.error.message}`);
   }
 
   async function onDelete(id: string) {

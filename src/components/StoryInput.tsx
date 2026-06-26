@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { validateStory, storyValidationMessage } from '../core/validate';
 import { STORY_MAX, DRAFT_DEBOUNCE_MS } from '../core/config';
 import { saveDraft, getDraft, getSettings } from '../services/storage';
-import { generateStoryboard } from '../services/generation';
+import { generateStoryboardForStore } from '../services/generation';
 import { estimateTokens, estimateProjectTokens, longStoryWarning } from '../core/tokens';
-import type { Project } from '../core/models';
+import type { Project, Result } from '../core/models';
 
 interface Props {
-  /** 生成成功后把项目上提给 App 渲染分镜。 */
-  onGenerated: (project: Project) => void;
+  /** 生成成功后交给 project store 落库并广播；失败则不推进 UI。 */
+  onGenerated: (project: Project) => Promise<Result<Project>>;
   /** 全局 LLM 锁占用中（TASK-009）：禁用生成按钮、显示加载。 */
   busy: boolean;
 }
@@ -99,9 +99,8 @@ export default function StoryInput({ onGenerated, busy }: Props) {
     setNotice('正在生成分镜…');
     try {
       // Issue #33：上报进度阶段（请求/重试/保存），避免长故事被误判为卡死。
-      const r = await generateStoryboard(
+      const r = await generateStoryboardForStore(
         { story: text, ...(persistKey ? {} : { apiKey: tempKey }) },
-        undefined,
         undefined,
         (p) => {
           if (p.phase !== 'done') setNotice(p.message);
@@ -110,8 +109,12 @@ export default function StoryInput({ onGenerated, busy }: Props) {
       if (r.ok) {
         // Issue #36：生成后显示本次大致 token 用量（仅供参考）。
         const { input, output } = estimateProjectTokens(text, r.data);
-        setNotice(`生成完成（约 输入 ~${input} / 输出 ~${output} tokens，仅供参考）`);
-        onGenerated(r.data);
+        const saved = await onGenerated(r.data);
+        if (saved.ok) {
+          setNotice(`生成完成（约 输入 ~${input} / 输出 ~${output} tokens，仅供参考）`);
+        } else {
+          setNotice(saved.error.message);
+        }
       } else {
         // 含 NO_API_KEY / 配置错误 / 网络等可读提示（TASK-003/009）。
         setNotice(r.error.message);

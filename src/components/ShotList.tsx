@@ -2,19 +2,15 @@ import { useState } from 'react';
 import type { Project, Shot } from '../core/models';
 import ShotCard from './ShotCard';
 import { deleteShotById, insertShotAt, moveShot, makeBlankShot } from '../core/shotOps';
-import { setShots, replaceShot, updateShotTransition } from '../services/storage';
 import { rewriteShot, generateTransition } from '../services/generation';
 import { TRANSITION_TYPES, transitionLabel } from '../core/transitions';
 import { copyToClipboard } from '../services/clipboard';
+import { useProjectStore } from '../sidepanel/projectStore';
 
 interface Props {
   project: Project;
   busy: boolean;
   persistApiKey: boolean;
-  /** 单镜头变更（#30 重写/编辑/撤销）。 */
-  onShotChanged: (shot: Shot) => void;
-  /** 结构性变更（增删/排序/撤销）后整体同步 Project。 */
-  onProjectUpdated: (project: Project) => void;
 }
 
 const UNDO_MAX = 20;
@@ -51,15 +47,14 @@ function TransitionBar({
   lang,
   busy,
   apiKey,
-  onUpdated,
 }: {
   prev: Shot;
   next: Shot;
   lang: Project['params']['outputLanguage'];
   busy: boolean;
   apiKey?: string;
-  onUpdated: (p: Project) => void;
 }) {
+  const { updateShotTransition } = useProjectStore();
   const t = prev.transitionToNext;
   const [type, setType] = useState(t?.type ?? TRANSITION_TYPES[0].id);
   const [note, setNote] = useState(t?.note ?? '');
@@ -81,25 +76,26 @@ function TransitionBar({
     setNote(r.data.note);
     setNoteEn(r.data.noteEn ?? '');
     const save = await updateShotTransition(prev.id, r.data);
-    if (save.ok && save.data) onUpdated(save.data);
-    else if (!save.ok) setNotice(save.error.message);
+    if (!save.ok) setNotice(save.error.message);
   }
 
   async function onSaveNote() {
     if (!t) return;
     // 用当前选中的 type（用户可能改了下拉再编辑），而非旧 prop 的 t.type（Codex P2）。
     const save = await updateShotTransition(prev.id, { type, note, ...(bilingual && noteEn ? { noteEn } : {}) });
-    if (save.ok && save.data) {
-      onUpdated(save.data);
+    if (save.ok) {
       setNotice('已保存');
     } else if (!save.ok) setNotice(save.error.message);
   }
 
   async function onClear() {
     const save = await updateShotTransition(prev.id, null);
-    if (save.ok && save.data) onUpdated(save.data);
-    setNote('');
-    setNoteEn('');
+    if (save.ok) {
+      setNote('');
+      setNoteEn('');
+    } else {
+      setNotice(save.error.message);
+    }
   }
 
   async function onCopy() {
@@ -166,7 +162,8 @@ function TransitionBar({
   );
 }
 
-export default function ShotList({ project, busy, persistApiKey, onShotChanged, onProjectUpdated }: Props) {
+export default function ShotList({ project, busy, persistApiKey }: Props) {
+  const { setShots, replaceShot } = useProjectStore();
   const [history, setHistory] = useState<Shot[][]>([]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -178,13 +175,12 @@ export default function ShotList({ project, busy, persistApiKey, onShotChanged, 
   const disabled = busy || working;
 
   async function applyShots(prev: Shot[], next: Shot[]): Promise<Project | null> {
-    setHistory((h) => [...h, prev].slice(-UNDO_MAX));
     const r = await setShots(next);
     if (!r.ok) {
       setNotice(r.error.message);
       return null;
     }
-    if (r.data) onProjectUpdated(r.data);
+    if (r.data) setHistory((h) => [...h, prev].slice(-UNDO_MAX));
     return r.data;
   }
 
@@ -216,8 +212,7 @@ export default function ShotList({ project, busy, persistApiKey, onShotChanged, 
         const r = await rewriteShot({ project: updated, shotId: blank.id, mode: 'feedback', feedback: desc, apiKey });
         if (r.ok) {
           const saved = await replaceShot(blank.id, r.data);
-          if (saved.ok) onShotChanged(r.data);
-          else setNotice(saved.error.message);
+          if (!saved.ok) setNotice(saved.error.message);
         } else {
           setNotice(`空白镜头已插入，但生成失败：${r.error.message}`);
         }
@@ -232,7 +227,6 @@ export default function ShotList({ project, busy, persistApiKey, onShotChanged, 
     const prev = history[history.length - 1];
     const r = await setShots(prev);
     if (r.ok) {
-      if (r.data) onProjectUpdated(r.data);
       setHistory((h) => h.slice(0, -1));
       setNotice('已撤销上一步结构操作');
     } else {
@@ -287,7 +281,6 @@ export default function ShotList({ project, busy, persistApiKey, onShotChanged, 
               project={project}
               busy={busy}
               persistApiKey={persistApiKey}
-              onShotChanged={onShotChanged}
               onDelete={() => void onDelete(s.id)}
             />
           </div>
@@ -298,7 +291,6 @@ export default function ShotList({ project, busy, persistApiKey, onShotChanged, 
               lang={project.params.outputLanguage}
               busy={busy}
               apiKey={persistApiKey ? undefined : tempKey.trim() || undefined}
-              onUpdated={onProjectUpdated}
             />
           )}
           <InsertBar onInsert={(d) => onInsert(i + 1, d)} disabled={disabled} />

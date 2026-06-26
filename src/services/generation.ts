@@ -219,6 +219,20 @@ export async function generateStoryboard(
   });
 }
 
+/** UI project store path：生成 Project 但不直接写 currentProject，由 store 统一落库与广播。 */
+export function generateStoryboardForStore(
+  input: { story: string; params?: Settings['params']; apiKey?: string },
+  retryOpts: RetryOptions = {},
+  onProgress?: (p: GenerationProgress) => void,
+): Promise<Result<Project>> {
+  return generateStoryboard(
+    input,
+    { ...realDeps, saveCurrentProject: async () => ok(undefined) },
+    retryOpts,
+    onProgress,
+  );
+}
+
 // ---- BGM 提示词生成（TASK-007，api-spec §3.4）----
 
 export interface BgmInput {
@@ -267,7 +281,7 @@ export async function generateBgmPromptAttempt(
 
 /**
  * 生成 BGM 提示词（TASK-007）：与分镜共享同一把全局锁（互斥，ARCH-MED-004）+ 退避重试。
- * **不自行持久化**——调用方成功后用 storage.updateCurrentProjectBgm 写回（api-spec §3.4）。
+ * **不自行持久化**——调用方成功后用 project store 写回（api-spec §3.4）。
  */
 export async function generateBgmPrompt(
   input: BgmInput,
@@ -358,7 +372,7 @@ export async function rewriteShotAttempt(
 
 /**
  * 重写单镜头（Issue #30 A/B + #32）：与整单生成/BGM 共享全局锁（互斥防重复提交）+ 退避重试。
- * **不自行落库**——UI 成功后调 `storage.replaceShot` 持久化（与 BGM 一致的约定）。
+ * **不自行落库**——UI 成功后调 project store 持久化（与 BGM 一致的约定）。
  */
 export async function rewriteShot(
   input: RewriteShotInput,
@@ -414,7 +428,7 @@ export async function generateTransitionAttempt(
   return ok({ type: input.type, note: parsed.note, ...(parsed.noteEn ? { noteEn: parsed.noteEn } : {}) });
 }
 
-/** 生成转场建议（与分镜/BGM 共享全局锁 + 退避重试）。UI 成功后调 storage.updateShotTransition 落库。 */
+/** 生成转场建议（与分镜/BGM 共享全局锁 + 退避重试）。UI 成功后调 project store 落库。 */
 export async function generateTransition(
   input: TransitionInput,
   deps: PreflightDeps = realDeps,
@@ -476,7 +490,7 @@ export async function generateFirstFrameAttempt(
   });
 }
 
-/** 生成首帧图像提示词（与分镜/BGM 共享全局锁 + 退避重试）。UI 成功后调 storage.updateShotFirstFrame 落库。 */
+/** 生成首帧图像提示词（与分镜/BGM 共享全局锁 + 退避重试）。UI 成功后调 project store 落库。 */
 export async function generateFirstFrame(
   input: FirstFrameInput,
   deps: PreflightDeps = realDeps,
