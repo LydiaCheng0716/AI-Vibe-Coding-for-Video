@@ -74,16 +74,24 @@ function LoadedProject({
   const { project, replaceProject } = useProjectStore();
   const [ready, setReady] = useState(false);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     let active = true;
-    void replaceProject(cloneProject(initialProject)).then(() => {
-      if (active) setReady(true);
-    });
+    // 失败也要 setReady 并暴露错误，否则测试会一直卡在 Loading 无诊断（Kimi minor）。
+    replaceProject(cloneProject(initialProject))
+      .catch((e: unknown) => {
+        if (active) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (active) setReady(true);
+      });
     return () => {
       active = false;
     };
   }, [initialProject, replaceProject]);
 
+  if (error) return <div>Failed to load test project: {error}</div>;
   if (!ready || !project) return <div>Loading test project</div>;
   return children(project);
 }

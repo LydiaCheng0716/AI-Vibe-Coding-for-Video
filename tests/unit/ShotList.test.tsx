@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ShotList from '../../src/components/ShotList';
 import { getCurrentProject } from '../../src/services/storage';
 import { renderWithProjectStore, makeProject } from './renderWithProjectStore';
@@ -15,6 +15,10 @@ vi.mock('../../src/services/generation', () => ({
 describe('ShotList component interactions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+  afterEach(() => {
+    // 恢复 window.confirm 等 spy，避免泄漏到后续测试文件（Kimi minor）。
+    vi.restoreAllMocks();
   });
 
   it('persists drag reorder by display order and can undo the move', async () => {
