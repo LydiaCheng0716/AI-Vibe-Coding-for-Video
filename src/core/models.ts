@@ -1,3 +1,5 @@
+import type { ExportFormat, ExportPromptLang } from './export';
+
 // 结构化数据模型（对齐 docs/api-spec.md 第 2 节）。本 Issue 用到 GenerationParams /
 // ProviderConfig / 统一 Result；Project/Shot/Character/BgmPrompt 先定义好，供后续任务复用。
 
@@ -30,6 +32,12 @@ export interface Settings {
   provider: ProviderConfig;
   /** 是否在本机加密保存 API Key（ADR-1 #8）。false = 不落盘，生成时手动输入。默认 true。 */
   persistApiKey: boolean;
+  /** 双语编辑时「自动翻译同步另一语言」的默认开关（Issue #70）。 */
+  autoTranslateSync?: boolean;
+  /** 导出面板上次选择的格式（Issue #70）。 */
+  exportFormat?: ExportFormat;
+  /** 导出面板上次选择的提示词语言（Issue #70）。 */
+  exportPromptLang?: ExportPromptLang;
   schemaVersion: number;
 }
 

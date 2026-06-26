@@ -5,6 +5,7 @@ import {
   clearDraft,
   getSettings,
   saveSettings,
+  updateSettings,
   saveCurrentProject,
   getCurrentProject,
   updateShotPrompt,
@@ -88,6 +89,41 @@ describe('storage: settings', () => {
     s.persistApiKey = false;
     await saveSettings(s);
     expect((await getSettings()).persistApiKey).toBe(false);
+  });
+
+  it('UI preference fields round-trip and missing fields fall back to defaults', async () => {
+    const s = defaultSettings();
+    s.autoTranslateSync = true;
+    s.exportFormat = 'platform';
+    s.exportPromptLang = 'en';
+    await saveSettings(s);
+
+    const got = await getSettings();
+    expect(got.autoTranslateSync).toBe(true);
+    expect(got.exportFormat).toBe('platform');
+    expect(got.exportPromptLang).toBe('en');
+
+    await chrome.storage.local.set({ settings: { provider: { kind: 'anthropic', model: 'x' } } });
+    const old = await getSettings();
+    expect(old.autoTranslateSync).toBe(false);
+    expect(old.exportFormat).toBe('markdown');
+    expect(old.exportPromptLang).toBe('both');
+  });
+
+  it('updateSettings 局部合并且并发写不丢更新（Kimi P2：串行 RMW）', async () => {
+    await saveSettings(defaultSettings());
+    // 并发改不同偏好字段：串行化后两者都应保留。
+    await Promise.all([
+      updateSettings({ exportFormat: 'json' }),
+      updateSettings({ exportPromptLang: 'en' }),
+      updateSettings({ autoTranslateSync: true }),
+    ]);
+    const got = await getSettings();
+    expect(got.exportFormat).toBe('json');
+    expect(got.exportPromptLang).toBe('en');
+    expect(got.autoTranslateSync).toBe(true);
+    // 未触及字段保持默认，不被覆盖。
+    expect(got.persistApiKey).toBe(true);
   });
 });
 

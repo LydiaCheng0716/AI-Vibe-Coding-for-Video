@@ -4,10 +4,13 @@
 import { ok, err, type Result, type Project, type Character, type Shot, type Transition } from './models';
 import { transitionLabel } from './transitions';
 
-export type ExportFormat = 'markdown' | 'json' | 'plaintext' | 'csv' | 'platform';
+// 单一事实源（Kimi P2）：枚举数组导出，类型由其推导，storage 校验复用同一数组，避免重复维护漂移。
+export const EXPORT_FORMATS = ['markdown', 'json', 'plaintext', 'csv', 'platform'] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 /** 导出提示词语言选择（Issue #41）：仅对双语镜头（含 promptEn）生效；单语任何值都回退 prompt。 */
-export type ExportPromptLang = 'zh' | 'en' | 'both';
+export const EXPORT_PROMPT_LANGS = ['zh', 'en', 'both'] as const;
+export type ExportPromptLang = (typeof EXPORT_PROMPT_LANGS)[number];
 
 /** 按语言选择把镜头提示词渲染成「标签 → 文本」段。单语项目 promptEn 不存在 → 始终单段 prompt。 */
 function shotPromptParts(s: Shot, lang: ExportPromptLang): Array<{ label: string | null; text: string }> {

@@ -22,6 +22,9 @@ export function defaultSettings(): Settings {
     params: defaultParams(),
     provider: defaultProvider(),
     persistApiKey: true,
+    autoTranslateSync: false,
+    exportFormat: 'markdown',
+    exportPromptLang: 'both',
     schemaVersion: SCHEMA_VERSION,
   };
 }

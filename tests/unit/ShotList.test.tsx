@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ShotList from '../../src/components/ShotList';
+import { generateFirstFrame, generateTransition } from '../../src/services/generation';
 import { getCurrentProject } from '../../src/services/storage';
 import { renderWithProjectStore, makeProject } from './renderWithProjectStore';
 
@@ -92,5 +93,107 @@ describe('ShotList component interactions', () => {
       expect(stored?.shots.map((s) => `${s.id}:${s.index}`)).toEqual(['s3:1']);
     });
     expect(await screen.findByText('分镜（1 个镜头）')).toBeTruthy();
+  });
+
+  it('batch-generates missing first frames, skips existing ones, and persists each success', async () => {
+    const user = userEvent.setup();
+    vi.mocked(generateFirstFrame).mockImplementation(async ({ shot }) => ({
+      ok: true,
+      data: { firstFramePrompt: `首帧-${shot.id}` },
+    }));
+    renderWithProjectStore(
+      makeProject({
+        shots: [
+          makeProject().shots[0],
+          { ...makeProject().shots[1], firstFramePrompt: '已有首帧' },
+          makeProject().shots[2],
+        ],
+      }),
+      (project) => <ShotList project={project} busy={false} persistApiKey />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: '批量生成首帧' }));
+
+    await screen.findByText(/首帧批量完成：成功 2、跳过 1、失败 0/);
+    expect(generateFirstFrame).toHaveBeenCalledTimes(2);
+    await waitFor(async () => {
+      const stored = await getCurrentProject();
+      expect(stored?.shots.map((s) => s.firstFramePrompt)).toEqual(['首帧-s1', '已有首帧', '首帧-s3']);
+    });
+  });
+
+  it('batch-generates adjacent transitions, skips existing pairs, and continues after failures', async () => {
+    const user = userEvent.setup();
+    vi.mocked(generateTransition).mockImplementation(async ({ prevShot }) => {
+      if (prevShot.id === 's2') {
+        return { ok: false, error: { code: 'NETWORK_ERROR', message: '转场失败', retriable: true } };
+      }
+      return { ok: true, data: { type: 'cut', note: `转场-${prevShot.id}` } };
+    });
+    renderWithProjectStore(
+      makeProject({
+        shots: [
+          { ...makeProject().shots[0], transitionToNext: { type: 'cut', note: '已有转场' } },
+          makeProject().shots[1],
+          makeProject().shots[2],
+        ],
+      }),
+      (project) => <ShotList project={project} busy={false} persistApiKey />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: '批量生成转场' }));
+
+    await screen.findByText(/转场批量完成：成功 0、跳过 1、失败 1/);
+    await screen.findByText(/镜头 2→3：转场失败/);
+    expect(generateTransition).toHaveBeenCalledTimes(1);
+    const stored = await getCurrentProject();
+    expect(stored?.shots[0].transitionToNext?.note).toBe('已有转场');
+    expect(stored?.shots[1].transitionToNext).toBeUndefined();
+  });
+
+  it('handles empty first-frame batches', async () => {
+    const user = userEvent.setup();
+    renderWithProjectStore(makeProject({ shots: [] }), (project) => (
+      <ShotList project={project} busy={false} persistApiKey />
+    ));
+
+    await user.click(await screen.findByRole('button', { name: '批量生成首帧' }));
+    await screen.findByText('首帧批量完成：成功 0、跳过 0、失败 0');
+    expect(generateFirstFrame).not.toHaveBeenCalled();
+  });
+
+  it('handles one-shot transition batches without adjacent pairs', async () => {
+    const user = userEvent.setup();
+
+    renderWithProjectStore(makeProject({ shots: [makeProject().shots[0]] }), (project) => (
+      <ShotList project={project} busy={false} persistApiKey />
+    ));
+
+    await user.click(await screen.findByRole('button', { name: '批量生成转场' }));
+    await screen.findByText('转场批量完成：成功 0、跳过 0、失败 0');
+    expect(generateTransition).not.toHaveBeenCalled();
+  });
+
+  it('clears the one-time key after a non-persisted batch finishes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(generateFirstFrame).mockResolvedValue({
+      ok: true,
+      data: { firstFramePrompt: '首帧' },
+    });
+    renderWithProjectStore(makeProject({ shots: [makeProject().shots[0]] }), (project) => (
+      <ShotList project={project} busy={false} persistApiKey={false} />
+    ));
+
+    const keyInput = (await screen.findByPlaceholderText(
+      '一次性 API Key（已关闭保存，用于批量/插入即时生成，不落盘）',
+    )) as HTMLInputElement;
+    await user.type(keyInput, 'sk-test');
+    expect(keyInput.value).toBe('sk-test');
+
+    await user.click(screen.getByRole('button', { name: '批量生成首帧' }));
+
+    await screen.findByText(/首帧批量完成：成功 1、跳过 0、失败 0/);
+    expect(keyInput.value).toBe('');
+    expect(generateFirstFrame).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'sk-test' }));
   });
 });

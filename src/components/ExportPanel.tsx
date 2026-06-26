@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Project } from '../core/models';
 import { exportProject, EXPORT_META, type ExportFormat, type ExportPromptLang } from '../core/export';
 import { copyToClipboard } from '../services/clipboard';
+import { getSettings, updateSettings } from '../services/storage';
 
 interface Props {
   project: Project | null;
@@ -18,8 +19,57 @@ export default function ExportPanel({ project }: Props) {
   const [format, setFormat] = useState<ExportFormat>('markdown');
   const [promptLang, setPromptLang] = useState<ExportPromptLang>('both');
   const [notice, setNotice] = useState<string | null>(null);
+  const dirtyRef = useRef(false);
+  const prefsRef = useRef<{ format: ExportFormat; promptLang: ExportPromptLang }>({
+    format: 'markdown',
+    promptLang: 'both',
+  });
   // 仅当项目含双语镜头时显示语言选择（Issue #41）。
   const bilingual = !!project?.shots?.some((s) => s.promptEn);
+
+  useEffect(() => {
+    let alive = true;
+    getSettings()
+      .then((settings) => {
+        if (!alive || dirtyRef.current) return;
+        const nextFormat = settings.exportFormat ?? 'markdown';
+        const nextPromptLang = settings.exportPromptLang ?? 'both';
+        prefsRef.current = { format: nextFormat, promptLang: nextPromptLang };
+        setFormat(nextFormat);
+        setPromptLang(nextPromptLang);
+      })
+      .catch(() => {
+        /* 读取失败沿用默认导出偏好。 */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function persistPrefs(next: { format: ExportFormat; promptLang: ExportPromptLang }) {
+    // 串行化 RMW，失败要提示（Kimi P2）：避免并发交错丢更新、避免静默吞错。
+    const saved = await updateSettings({
+      exportFormat: next.format,
+      exportPromptLang: next.promptLang,
+    });
+    if (!saved.ok) setNotice(saved.error.message);
+  }
+
+  function onFormatChange(value: ExportFormat) {
+    dirtyRef.current = true;
+    const next = { ...prefsRef.current, format: value };
+    prefsRef.current = next;
+    setFormat(value);
+    void persistPrefs(next);
+  }
+
+  function onPromptLangChange(value: ExportPromptLang) {
+    dirtyRef.current = true;
+    const next = { ...prefsRef.current, promptLang: value };
+    prefsRef.current = next;
+    setPromptLang(value);
+    void persistPrefs(next);
+  }
 
   async function onCopy() {
     const r = exportProject(project, format, promptLang);
@@ -61,7 +111,7 @@ export default function ExportPanel({ project }: Props) {
       <div className="flex items-center gap-2">
         <select
           value={format}
-          onChange={(e) => setFormat(e.target.value as ExportFormat)}
+          onChange={(e) => onFormatChange(e.target.value as ExportFormat)}
           className="rounded border border-gray-300 px-2 py-1 text-xs outline-none focus:border-blue-500"
         >
           {FORMATS.map((f) => (
@@ -73,7 +123,7 @@ export default function ExportPanel({ project }: Props) {
         {bilingual && (
           <select
             value={promptLang}
-            onChange={(e) => setPromptLang(e.target.value as ExportPromptLang)}
+            onChange={(e) => onPromptLangChange(e.target.value as ExportPromptLang)}
             className="rounded border border-gray-300 px-2 py-1 text-xs outline-none focus:border-blue-500"
           >
             {PROMPT_LANGS.map((l) => (
