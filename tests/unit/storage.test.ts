@@ -106,7 +106,7 @@ describe('storage: settings', () => {
 
     await chrome.storage.local.set({ settings: { provider: { kind: 'anthropic', model: 'x' } } });
     const old = await getSettings();
-    expect(old.autoTranslateSync).toBe(false);
+    expect(old.autoTranslateSync).toBe(true); // #104：缺字段回退到默认，默认已改为开启
     expect(old.exportFormat).toBe('markdown');
     expect(old.exportPromptLang).toBe('both');
   });

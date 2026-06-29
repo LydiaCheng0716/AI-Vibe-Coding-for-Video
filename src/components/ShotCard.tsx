@@ -168,6 +168,10 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
   const autoSyncDirtyRef = useRef(false);
   const [translating, setTranslating] = useState<'zh' | 'en' | null>(null);
   const translatingRef = useRef(false);
+  // 「上次同步/载入」快照（Issue #104）：仅当源框自上次同步后真的有改动才翻译，
+  // 杜绝「未改动也回译」造成的往返覆盖（手改一边不被另一边回译覆盖），并省额度。
+  const lastSyncedZh = useRef(shot.prompt);
+  const lastSyncedEn = useRef(shot.promptEn ?? '');
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // 单镜头迭代（Issue #30）
@@ -228,9 +232,16 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
     setNotice(null);
   }
 
+  // 进入/退出编辑时把翻译同步快照对齐到当前镜头值，避免用旧快照误判「有改动」。
+  function resetSyncSnapshots() {
+    lastSyncedZh.current = shot.prompt;
+    lastSyncedEn.current = shot.promptEn ?? '';
+  }
+
   function onCancel() {
     setDraft(shot.prompt);
     setDraftEn(shot.promptEn ?? '');
+    resetSyncSnapshots();
     setEditing(false);
     setNotice(null);
   }
@@ -238,6 +249,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
   function onEdit() {
     setDraft(shot.prompt);
     setDraftEn(shot.promptEn ?? '');
+    resetSyncSnapshots();
     setNotice(null);
     setEditing(true);
   }
@@ -343,6 +355,9 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
     if (shot.promptEn === undefined || !autoSync || busy || translatingRef.current) return;
     const text = from === 'zh' ? draft : draftEn;
     if (!text.trim()) return;
+    // 源框自上次同步后无改动 → 不翻译：杜绝往返覆盖（仅聚焦再失焦不会回译覆盖另一边），并省额度（#104）。
+    const lastSynced = from === 'zh' ? lastSyncedZh.current : lastSyncedEn.current;
+    if (text === lastSynced) return;
     const target: 'zh' | 'en' = from === 'zh' ? 'en' : 'zh';
     const before = target === 'en' ? draftEn : draft; // 目标框翻译前快照
     translatingRef.current = true;
@@ -351,9 +366,23 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
     try {
       const r = await translateText({ text, targetLang: target, apiKey: oneTimeKey.apiKey });
       if (r.ok) {
-        // 仅当目标框自请求发起后未被用户改动时才写入，避免覆盖用户在途编辑（Codex P2）。
-        if (target === 'en') setDraftEn((cur) => (cur === before ? r.data : cur));
-        else setDraft((cur) => (cur === before ? r.data : cur));
+        // 仅当目标框自请求发起后未被用户改动时才写入，避免覆盖用户在途编辑（Codex P2）；
+        // 成功写入时同步刷新两边快照，使两框视为已对齐（避免紧接着的另一侧失焦再次回译）。
+        if (target === 'en') {
+          setDraftEn((cur) => {
+            if (cur !== before) return cur;
+            lastSyncedZh.current = text;
+            lastSyncedEn.current = r.data;
+            return r.data;
+          });
+        } else {
+          setDraft((cur) => {
+            if (cur !== before) return cur;
+            lastSyncedEn.current = text;
+            lastSyncedZh.current = r.data;
+            return r.data;
+          });
+        }
       } else {
         setNotice(t('shotCard.translateFailed', { message: r.error.message }));
       }
@@ -474,11 +503,14 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
       {editing ? (
         <div className="mt-2 flex flex-col gap-2">
           {shot.promptEn !== undefined && (
-            <label className="flex items-center gap-1 text-[11px] text-gray-600">
-              <input type="checkbox" checked={autoSync} onChange={(e) => void onAutoSyncChange(e.target.checked)} />
-              {t('shotCard.autoSync')}
-              {translating && <span className="text-blue-600">{t('shotCard.translating')}</span>}
-            </label>
+            <>
+              <label className="flex items-center gap-1 text-[11px] text-gray-600">
+                <input type="checkbox" checked={autoSync} onChange={(e) => void onAutoSyncChange(e.target.checked)} />
+                {t('shotCard.autoSync')}
+                {translating && <span className="text-blue-600">{t('shotCard.translating')}</span>}
+              </label>
+              <span className="text-[11px] text-amber-600">{t('shotCard.autoSyncCostHint')}</span>
+            </>
           )}
           {shot.promptEn !== undefined && autoSync && (
             <OneTimeKeyInput

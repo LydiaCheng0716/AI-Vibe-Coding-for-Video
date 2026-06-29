@@ -140,6 +140,7 @@ const en = {
   'shotCard.cameraMovement': 'Camera movement',
   'shotCard.duration': 'Duration',
   'shotCard.autoSync': 'Auto-translate the other language after editing (remember this preference)',
+  'shotCard.autoSyncCostHint': 'When on, each edit-blur calls the LLM once and consumes your own API key quota.',
   'shotCard.translating': 'Translating…',
   'shotCard.autoTranslateKeyAria': 'One-time API Key for auto translation on shot {index}',
   'shotCard.autoTranslateKeyPlaceholder': 'One-time API Key (saving is off; for auto translation; not stored)',
