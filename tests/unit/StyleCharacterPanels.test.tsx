@@ -108,4 +108,55 @@ describe('StylePanel and CharacterPanel store persistence', () => {
     expect(stored?.characters[0].locked).toBeUndefined();
     spy.mockRestore();
   });
+
+  // Issue #101：每个角色展开框内「删除」按钮（确认 + 可撤销，走 project store）。
+  it('deletes a character through the store after confirm, and can undo', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderWithProjectStore(makeProject(), (project) => (
+      <CharacterPanel
+        characters={project.characters}
+        story={project.story}
+        lang={project.params.outputLanguage}
+        busy={false}
+      />
+    ));
+
+    await screen.findByDisplayValue('林夏');
+    await user.click(screen.getByRole('button', { name: '删除 角色 林夏' }));
+
+    await waitFor(async () => {
+      expect((await getCurrentProject())?.characters).toHaveLength(0);
+    });
+    // 删除后出现可撤销提示。
+    await screen.findByText('已删除角色「林夏」。');
+
+    await user.click(screen.getByRole('button', { name: '撤销' }));
+    await waitFor(async () => {
+      const stored = await getCurrentProject();
+      expect(stored?.characters).toHaveLength(1);
+      expect(stored?.characters[0]).toMatchObject({ id: 'c1', name: '林夏' });
+    });
+    confirmSpy.mockRestore();
+  });
+
+  it('does not delete when the confirm is cancelled', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderWithProjectStore(makeProject(), (project) => (
+      <CharacterPanel
+        characters={project.characters}
+        story={project.story}
+        lang={project.params.outputLanguage}
+        busy={false}
+      />
+    ));
+
+    await screen.findByDisplayValue('林夏');
+    await user.click(screen.getByRole('button', { name: '删除 角色 林夏' }));
+
+    expect((await getCurrentProject())?.characters).toHaveLength(1);
+    expect(screen.queryByText('已删除角色「林夏」。')).toBeNull();
+    confirmSpy.mockRestore();
+  });
 });

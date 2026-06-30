@@ -15,6 +15,7 @@ const zh = {
   'common.regenerate': '重新生成',
   'common.saved': '已保存',
   'common.copied': '已复制',
+  'common.undo': '撤销',
   'common.zh': '中文',
   'common.en': 'English',
 
@@ -193,6 +194,9 @@ const zh = {
   'character.savedToLibrary': '已存入角色库',
   'character.seedCopied': '种子短语已复制',
   'character.locked': '（已锁定）',
+  'character.deleteAria': '删除 角色 {name}',
+  'character.confirmDelete': '确定删除角色「{name}」？可点「撤销」恢复。',
+  'character.deletedNotice': '已删除角色「{name}」。',
   'character.resuggesting': '生成中…',
   'character.resuggest': '重新建议',
   'character.seed': '种子：{seed}',
