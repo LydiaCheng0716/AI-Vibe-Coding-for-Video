@@ -36,8 +36,10 @@ export default function CharacterPanel({
   const { addCharacter, removeCharacter, restoreCharacter } = useProjectStore();
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  // 删除撤销（Issue #101）：保留最近一次删除的角色 + 原位置，供「撤销」按原 id/位置插回。
-  const [undoDelete, setUndoDelete] = useState<{ character: Character; index: number } | null>(null);
+  // 删除撤销栈（Issue #101）：每次删除压入「角色 + 原位置」，撤销按 LIFO 逐个按原 id/位置插回——
+  // 避免单级撤销在「连删两个」时丢掉先删那个的撤销目标（Kimi 外门 P2）。
+  const [undoStack, setUndoStack] = useState<{ character: Character; index: number }[]>([]);
+  const pendingUndo = undoStack[undoStack.length - 1];
   const oneTimeKey = useOneTimeKey();
   // 角色库刷新信号：卡片「存入角色库」后 +1，触发库列表重载。
   const [libRefresh, setLibRefresh] = useState(0);
@@ -66,17 +68,18 @@ export default function CharacterPanel({
       setNotice(r.error.message);
       return;
     }
-    setUndoDelete({ character, index });
+    setUndoStack((s) => [...s, { character, index }]);
   }
 
   async function onUndoDelete() {
-    if (!undoDelete) return;
-    const r = await restoreCharacter(undoDelete.character, undoDelete.index);
+    const top = undoStack[undoStack.length - 1];
+    if (!top) return;
+    const r = await restoreCharacter(top.character, top.index);
     if (!r.ok) {
       setNotice(r.error.message);
       return;
     }
-    setUndoDelete(null);
+    setUndoStack((s) => s.slice(0, -1));
   }
 
   return (
@@ -96,11 +99,11 @@ export default function CharacterPanel({
         </button>
       }
       belowHeader={
-        (undoDelete || notice) && (
+        (pendingUndo || notice) && (
           <div className="flex flex-col gap-1">
-            {undoDelete && (
+            {pendingUndo && (
               <div className="flex items-center gap-2 text-xs text-gray-600">
-                <span>{t('character.deletedNotice', { name: displayName(undoDelete.character, t) })}</span>
+                <span>{t('character.deletedNotice', { name: displayName(pendingUndo.character, t) })}</span>
                 <button
                   type="button"
                   onClick={() => void onUndoDelete()}

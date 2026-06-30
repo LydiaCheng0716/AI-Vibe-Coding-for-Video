@@ -365,6 +365,14 @@ describe('storage: 角色删除/恢复（Issue #101）', () => {
     expect(r.ok).toBe(true);
     expect((await getCurrentProject())?.characters).toHaveLength(2);
   });
+
+  it('删除后镜头残留 ref：新增角色不复用已删 id（避免误绑到镜头，Kimi 外门 P2）', async () => {
+    await saveCurrentProject(mkProjectRefBoth()); // c1,c2；shot[0].refs=['c1','c2']
+    await removeCharacter('c2'); // characters=[c1]，但 shot[0] 仍残留 ref 'c2'
+    const r = await addCharacter({ name: '新', appearance: '', profile: emptyProfile() });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.id).toBe('c3'); // 不复用 c2（仍被镜头引用），故取 c3
+  });
 });
 
 describe('storage: replaceShot（Issue #30/#32）', () => {

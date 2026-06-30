@@ -39,3 +39,11 @@
 
 ## 门禁
 CTO 自评 → Kimi → Codex（外门带硬超时）。基线 develop，merge-when-green（CI：coverage + bundle 守卫 + e2e smoke）。
+
+### Kimi 外门结论（APPROVE WITH COMMENTS）逐条处置
+- **[P2] 单级撤销丢删除目标** → 已修：撤销升级为**栈**（LIFO），连删多个各自可撤销。
+- **[P2] 已删角色在镜头残留 ref，未来新角色复用同 id 会误绑** → 已修：`nextCharacterId` 同时扫描镜头
+  `characterRefs`，避让仍被引用的 id（新角色取 c{maxRef+1}）。保留 ref 以维持撤销回填的高保真；
+  残留 ref 对注入惰性安全（缺失 id 跳过），导出携带的孤立 ref 为内部 id、无副作用，列为可接受。
+- **[minor] window.confirm 绕过 i18n** → 暂不改：与既有 #56 镜头删除确认口径一致；改应用内弹窗属
+  跨切面 UX 变更，应单开 issue（待告知 Lydia）。

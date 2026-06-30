@@ -180,13 +180,19 @@ export async function updateShotPrompt(shotId: string, prompt: string): Promise<
   });
 }
 
-/** 计算下一个不冲突的角色 id（c{N}）。 */
-function nextCharacterId(characters: Character[]): string {
+/**
+ * 计算下一个不冲突的角色 id（c{N}）。
+ * 同时扫描镜头 characterRefs（Issue #101）：删除角色后仍可能在镜头里残留其 ref（保留以便撤销回填），
+ * 若仅按现存角色取 max，新角色可能复用已删 id 而误绑到那些镜头——故把 ref 里的 id 也纳入避让。
+ */
+function nextCharacterId(characters: Character[], shots: Shot[] = []): string {
   let max = 0;
-  for (const c of characters) {
-    const m = c.id.match(/^c(\d+)$/);
+  const bump = (id: string) => {
+    const m = id.match(/^c(\d+)$/);
     if (m) max = Math.max(max, Number(m[1]));
-  }
+  };
+  for (const c of characters) bump(c.id);
+  for (const s of shots) for (const ref of s.characterRefs ?? []) bump(ref);
   return `c${max + 1}`;
 }
 
@@ -252,7 +258,7 @@ export async function addCharacter(input: Omit<Character, 'id'>): Promise<Result
   return withProjectLock(async () => {
     const project = await getCurrentProject();
     if (!project) return err('NO_GENERATION_INPUT', '请先生成分镜再新增角色。');
-    const character: Character = { ...input, id: nextCharacterId(project.characters) };
+    const character: Character = { ...input, id: nextCharacterId(project.characters, project.shots) };
     const saved = await doSaveProject({
       ...project,
       characters: [...project.characters, character],
