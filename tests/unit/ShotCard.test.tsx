@@ -208,6 +208,27 @@ describe('ShotCard copy actions', () => {
     );
   });
 
+  it('uses the English duration label for a single-language English project (#105)', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({
+      params: { ...makeProject().params, outputLanguage: 'en' },
+      shots: [makeShot('s1', 1, { prompt: 'english only prompt' })],
+    });
+
+    renderWithProjectStore(project, (loadedProject) => (
+      <ShotCard shot={loadedProject.shots[0]} project={loadedProject} busy={false} persistApiKey onDelete={() => {}} />
+    ));
+
+    // 单语英文项目：单框复制与全文复制都用 "Duration:"（跟随 outputLanguage）。
+    await user.click(await screen.findByRole('button', { name: '复制 镜头 1 提示词' }));
+    expect(copyToClipboard).toHaveBeenLastCalledWith('Duration: 3s\nenglish only prompt');
+
+    await user.click(screen.getByRole('button', { name: '复制 镜头 1 全文' }));
+    expect(copyToClipboard).toHaveBeenLastCalledWith(
+      ['镜头 1', '', '[EN]', 'Duration: 3s', 'english only prompt'].join('\n'),
+    );
+  });
+
   it('copies current edit drafts instead of stale saved prompt text', async () => {
     const user = userEvent.setup();
 
