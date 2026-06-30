@@ -180,13 +180,19 @@ export async function updateShotPrompt(shotId: string, prompt: string): Promise<
   });
 }
 
-/** 计算下一个不冲突的角色 id（c{N}）。 */
-function nextCharacterId(characters: Character[]): string {
+/**
+ * 计算下一个不冲突的角色 id（c{N}）。
+ * 同时扫描镜头 characterRefs（Issue #101）：删除角色后仍可能在镜头里残留其 ref（保留以便撤销回填），
+ * 若仅按现存角色取 max，新角色可能复用已删 id 而误绑到那些镜头——故把 ref 里的 id 也纳入避让。
+ */
+function nextCharacterId(characters: Character[], shots: Shot[] = []): string {
   let max = 0;
-  for (const c of characters) {
-    const m = c.id.match(/^c(\d+)$/);
+  const bump = (id: string) => {
+    const m = id.match(/^c(\d+)$/);
     if (m) max = Math.max(max, Number(m[1]));
-  }
+  };
+  for (const c of characters) bump(c.id);
+  for (const s of shots) for (const ref of s.characterRefs ?? []) bump(ref);
   return `c${max + 1}`;
 }
 
@@ -252,13 +258,56 @@ export async function addCharacter(input: Omit<Character, 'id'>): Promise<Result
   return withProjectLock(async () => {
     const project = await getCurrentProject();
     if (!project) return err('NO_GENERATION_INPUT', '请先生成分镜再新增角色。');
-    const character: Character = { ...input, id: nextCharacterId(project.characters) };
+    const character: Character = { ...input, id: nextCharacterId(project.characters, project.shots) };
     const saved = await doSaveProject({
       ...project,
       characters: [...project.characters, character],
     });
     if (!saved.ok) return saved;
     return ok(character);
+  });
+}
+
+/**
+ * 删除某角色（Issue #101）：projectLock 内 RMW，从 project.characters 移除该 id，随后重注入
+ * 角色一致性 + 全局风格——剥离已删角色残留的锚点行、刷新非编辑镜头（注入会自动跳过缺失 id）。
+ * **保留镜头 characterRefs 原样**（不剥离）：注入对缺失 id 安全跳过，留着可让「撤销」恢复角色后锚点自然回填。
+ * 无项目/无匹配 id → ok(null) 无副作用。返回更新后 Project 供 UI 同步。
+ */
+export async function removeCharacter(id: string): Promise<Result<Project | null>> {
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return ok(null);
+    if (!project.characters.some((c) => c.id === id)) return ok(null);
+    const characters = project.characters.filter((c) => c.id !== id);
+    // 角色重注入会剥离「角色块」（含其后全局风格块），故随后再重注入全局风格，避免抹掉锁定风格锚点（同 updateCharacter）。
+    const next = reinjectGlobalStyle(reinjectCharacterConsistency({ ...project, characters }));
+    const saved = await doSaveProject(next);
+    if (!saved.ok) return saved;
+    return ok(next);
+  });
+}
+
+/**
+ * 恢复（撤销删除）某角色（Issue #101）：把整条角色按原 id 与原位置插回 project.characters，随后重注入。
+ * 保留原 id 使镜头里仍存的 characterRefs 自然重新锚定。若同 id 已存在 → 幂等返回当前 Project，不重复插入。
+ * 无项目 → ok(null)。返回更新后 Project 供 UI 同步。
+ */
+export async function restoreCharacter(
+  character: Character,
+  atIndex: number,
+): Promise<Result<Project | null>> {
+  return withProjectLock(async () => {
+    const project = await getCurrentProject();
+    if (!project) return ok(null);
+    if (project.characters.some((c) => c.id === character.id)) return ok(project);
+    const characters = [...project.characters];
+    const i = Math.min(Math.max(atIndex, 0), characters.length);
+    characters.splice(i, 0, character);
+    const next = reinjectGlobalStyle(reinjectCharacterConsistency({ ...project, characters }));
+    const saved = await doSaveProject(next);
+    if (!saved.ok) return saved;
+    return ok(next);
   });
 }
 

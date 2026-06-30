@@ -13,6 +13,8 @@ import {
   updateCurrentProjectBgm,
   updateCharacter,
   addCharacter,
+  removeCharacter,
+  restoreCharacter,
   replaceShot,
 } from '../../src/services/storage';
 import { defaultSettings, defaultParams } from '../../src/core/defaults';
@@ -307,6 +309,69 @@ describe('storage: 角色调校（Issue #29）', () => {
   it('addCharacter 无项目 → 报错', async () => {
     const r = await addCharacter({ name: 'x', appearance: '', profile: emptyProfile() });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('storage: 角色删除/恢复（Issue #101）', () => {
+  // 镜头同时引用 c1+c2，便于验证删除后仅剥离被删角色锚点、保留其它角色锚点。
+  function mkProjectRefBoth(): Project {
+    const p = mkProjectWithChar();
+    p.shots[0] = { ...p.shots[0], characterRefs: ['c1', 'c2'] };
+    return p;
+  }
+
+  it('removeCharacter 移除目标角色并重注入：剥离其锚点、保留其它角色锚点；返回更新 Project', async () => {
+    await saveCurrentProject(mkProjectRefBoth());
+    // 先触发一次重注入把两角色锚点写进镜头。
+    await updateCharacter('c1', { profile: { ...emptyProfile(), hair: '黑长直' } });
+    await updateCharacter('c2', { profile: { ...emptyProfile(), hair: '寸头' } });
+    let p = await getCurrentProject();
+    expect(p?.shots[0].prompt).toContain('发型发色:黑长直');
+    expect(p?.shots[0].prompt).toContain('发型发色:寸头');
+
+    const r = await removeCharacter('c2');
+    expect(r.ok).toBe(true);
+    p = await getCurrentProject();
+    expect(p?.characters.map((c) => c.id)).toEqual(['c1']);
+    expect(p?.shots[0].prompt).toContain('发型发色:黑长直'); // 保留 c1 锚点
+    expect(p?.shots[0].prompt).not.toContain('发型发色:寸头'); // 剥离已删 c2 锚点
+  });
+
+  it('removeCharacter 无项目 → ok(null)；无匹配 id → ok(null) 无副作用', async () => {
+    expect(await removeCharacter('c1')).toMatchObject({ ok: true, data: null });
+    await saveCurrentProject(mkProjectWithChar());
+    expect(await removeCharacter('c999')).toMatchObject({ ok: true, data: null });
+    expect((await getCurrentProject())?.characters).toHaveLength(2);
+  });
+
+  it('restoreCharacter 按原 id 与原位置插回并重注入；镜头锚点随保留的 characterRefs 回填', async () => {
+    await saveCurrentProject(mkProjectRefBoth());
+    await updateCharacter('c1', { profile: { ...emptyProfile(), hair: '黑长直' } });
+    await updateCharacter('c2', { profile: { ...emptyProfile(), hair: '寸头' } });
+    const removed = (await getCurrentProject())?.characters[1] as Character; // c2
+
+    await removeCharacter('c2');
+    const r = await restoreCharacter(removed, 1);
+    expect(r.ok).toBe(true);
+    const p = await getCurrentProject();
+    expect(p?.characters.map((c) => c.id)).toEqual(['c1', 'c2']); // 原位置插回
+    expect(p?.shots[0].prompt).toContain('发型发色:寸头'); // characterRefs 仍含 c2 → 锚点回填
+  });
+
+  it('restoreCharacter 同 id 已存在 → 幂等不重复插入；无项目 → ok(null)', async () => {
+    expect(await restoreCharacter(mkChar(), 0)).toMatchObject({ ok: true, data: null });
+    await saveCurrentProject(mkProjectWithChar());
+    const r = await restoreCharacter(mkChar(), 0); // c1 已存在
+    expect(r.ok).toBe(true);
+    expect((await getCurrentProject())?.characters).toHaveLength(2);
+  });
+
+  it('删除后镜头残留 ref：新增角色不复用已删 id（避免误绑到镜头，Kimi 外门 P2）', async () => {
+    await saveCurrentProject(mkProjectRefBoth()); // c1,c2；shot[0].refs=['c1','c2']
+    await removeCharacter('c2'); // characters=[c1]，但 shot[0] 仍残留 ref 'c2'
+    const r = await addCharacter({ name: '新', appearance: '', profile: emptyProfile() });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.id).toBe('c3'); // 不复用 c2（仍被镜头引用），故取 c3
   });
 });
 

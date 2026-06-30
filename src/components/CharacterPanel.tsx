@@ -33,9 +33,13 @@ export default function CharacterPanel({
   busy,
 }: Props) {
   const { t } = useI18n();
-  const { addCharacter } = useProjectStore();
+  const { addCharacter, removeCharacter, restoreCharacter } = useProjectStore();
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // 删除撤销栈（Issue #101）：每次删除压入「角色 + 原位置」，撤销按 LIFO 逐个按原 id/位置插回——
+  // 避免单级撤销在「连删两个」时丢掉先删那个的撤销目标（Kimi 外门 P2）。
+  const [undoStack, setUndoStack] = useState<{ character: Character; index: number }[]>([]);
+  const pendingUndo = undoStack[undoStack.length - 1];
   const oneTimeKey = useOneTimeKey();
   // 角色库刷新信号：卡片「存入角色库」后 +1，触发库列表重载。
   const [libRefresh, setLibRefresh] = useState(0);
@@ -55,6 +59,29 @@ export default function CharacterPanel({
     if (!r.ok) setNotice(r.error.message);
   }
 
+  // 删除角色（Issue #101）：确认 → 走 project store 移除（重注入刷新镜头锚点）→ 暂存以便撤销。
+  async function onDeleteCharacter(character: Character, index: number) {
+    if (!window.confirm(t('character.confirmDelete', { name: displayName(character, t) }))) return;
+    setNotice(null);
+    const r = await removeCharacter(character.id);
+    if (!r.ok) {
+      setNotice(r.error.message);
+      return;
+    }
+    setUndoStack((s) => [...s, { character, index }]);
+  }
+
+  async function onUndoDelete() {
+    const top = undoStack[undoStack.length - 1];
+    if (!top) return;
+    const r = await restoreCharacter(top.character, top.index);
+    if (!r.ok) {
+      setNotice(r.error.message);
+      return;
+    }
+    setUndoStack((s) => s.slice(0, -1));
+  }
+
   return (
     <CollapsiblePanel
       title={t('character.title', { n: characters.length })}
@@ -71,14 +98,32 @@ export default function CharacterPanel({
           {adding ? t('character.adding') : t('character.add')}
         </button>
       }
-      belowHeader={notice && <p className="text-xs text-red-600">{notice}</p>}
+      belowHeader={
+        (pendingUndo || notice) && (
+          <div className="flex flex-col gap-1">
+            {pendingUndo && (
+              <div className="flex items-center gap-2 text-xs text-gray-600">
+                <span>{t('character.deletedNotice', { name: displayName(pendingUndo.character, t) })}</span>
+                <button
+                  type="button"
+                  onClick={() => void onUndoDelete()}
+                  className="text-blue-600 hover:underline"
+                >
+                  {t('common.undo')}
+                </button>
+              </div>
+            )}
+            {notice && <p className="text-xs text-red-600">{notice}</p>}
+          </div>
+        )
+      }
     >
       <OneTimeKeyInput
         oneTimeKey={oneTimeKey}
         className="w-full rounded border border-amber-300 p-1 text-xs outline-none focus:border-amber-500"
         placeholder={t('character.resuggestKeyPlaceholder')}
       />
-      {characters.map((c) => (
+      {characters.map((c, i) => (
         <CharacterCard
           key={c.id}
           character={c}
@@ -86,6 +131,7 @@ export default function CharacterPanel({
           busy={busy}
           oneTimeKey={oneTimeKey}
           onSavedToLibrary={() => setLibRefresh((n) => n + 1)}
+          onDelete={() => void onDeleteCharacter(c, i)}
         />
       ))}
       <CharacterLibrary refreshKey={libRefresh} onUse={onUseFromLibrary} />
@@ -101,6 +147,8 @@ interface CardProps {
   oneTimeKey: ReturnType<typeof useOneTimeKey>;
   /** 存入角色库后通知面板刷新库列表。 */
   onSavedToLibrary: () => void;
+  /** 删除本角色（Issue #101；确认/撤销由父级 CharacterPanel 处理）。 */
+  onDelete: () => void;
 }
 
 function CharacterCard({
@@ -109,6 +157,7 @@ function CharacterCard({
   busy,
   oneTimeKey,
   onSavedToLibrary,
+  onDelete,
 }: CardProps) {
   const { t, uiLanguage } = useI18n();
   const { updateCharacter } = useProjectStore();
@@ -196,17 +245,27 @@ function CharacterCard({
           {displayName(character, t)}
           {locked && <span className="ml-1 text-green-700">{t('character.locked')}</span>}
         </span>
-        <button
-          type="button"
-          onClick={() => persist({ locked: !locked })}
-          className={`rounded px-2 py-0.5 text-xs ${
-            locked
-              ? 'border border-green-300 bg-green-50 text-green-800 hover:bg-green-100'
-              : 'border border-gray-300 hover:bg-gray-50'
-          }`}
-        >
-          {locked ? t('common.unlock') : t('common.lock')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => persist({ locked: !locked })}
+            className={`rounded px-2 py-0.5 text-xs ${
+              locked
+                ? 'border border-green-300 bg-green-50 text-green-800 hover:bg-green-100'
+                : 'border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {locked ? t('common.unlock') : t('common.lock')}
+          </button>
+          <button
+            type="button"
+            aria-label={t('character.deleteAria', { name: displayName(character, t) })}
+            onClick={onDelete}
+            className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50"
+          >
+            {t('common.delete')}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">

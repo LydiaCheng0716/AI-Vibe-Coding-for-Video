@@ -17,6 +17,7 @@ const en = {
   'common.regenerate': 'Regenerate',
   'common.saved': 'Saved',
   'common.copied': 'Copied',
+  'common.undo': 'Undo',
   'common.zh': 'Chinese',
   'common.en': 'English',
 
@@ -195,6 +196,9 @@ const en = {
   'character.savedToLibrary': 'Saved to character library',
   'character.seedCopied': 'Seed phrase copied',
   'character.locked': '(locked)',
+  'character.deleteAria': 'Delete character {name}',
+  'character.confirmDelete': 'Delete character "{name}"? You can undo.',
+  'character.deletedNotice': 'Deleted character "{name}".',
   'character.resuggesting': 'Generating…',
   'character.resuggest': 'Regenerate suggestions',
   'character.seed': 'Seed: {seed}',

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import CharacterPanel from '../../src/components/CharacterPanel';
 import StylePanel from '../../src/components/StylePanel';
 import { getCurrentProject } from '../../src/services/storage';
-import { makeProject, renderWithProjectStore } from './renderWithProjectStore';
+import { makeCharacter, makeProject, renderWithProjectStore } from './renderWithProjectStore';
 
 describe('StylePanel and CharacterPanel store persistence', () => {
   it('persists style tuning and lock changes through the project store', async () => {
@@ -107,5 +107,95 @@ describe('StylePanel and CharacterPanel store persistence', () => {
     const stored = await getCurrentProject();
     expect(stored?.characters[0].locked).toBeUndefined();
     spy.mockRestore();
+  });
+
+  // Issue #101：每个角色展开框内「删除」按钮（确认 + 可撤销，走 project store）。
+  it('deletes a character through the store after confirm, and can undo', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderWithProjectStore(makeProject(), (project) => (
+      <CharacterPanel
+        characters={project.characters}
+        story={project.story}
+        lang={project.params.outputLanguage}
+        busy={false}
+      />
+    ));
+
+    await screen.findByDisplayValue('林夏');
+    await user.click(screen.getByRole('button', { name: '删除 角色 林夏' }));
+
+    await waitFor(async () => {
+      expect((await getCurrentProject())?.characters).toHaveLength(0);
+    });
+    // 删除后出现可撤销提示。
+    await screen.findByText('已删除角色「林夏」。');
+
+    await user.click(screen.getByRole('button', { name: '撤销' }));
+    await waitFor(async () => {
+      const stored = await getCurrentProject();
+      expect(stored?.characters).toHaveLength(1);
+      expect(stored?.characters[0]).toMatchObject({ id: 'c1', name: '林夏' });
+    });
+    confirmSpy.mockRestore();
+  });
+
+  it('undo stack restores multiple deletions LIFO (no lost undo target)', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const twoChars = makeProject({
+      characters: [
+        makeCharacter({ id: 'c1', name: '林夏' }),
+        makeCharacter({ id: 'c2', name: '阿明' }),
+      ],
+    });
+    renderWithProjectStore(twoChars, (project) => (
+      <CharacterPanel
+        characters={project.characters}
+        story={project.story}
+        lang={project.params.outputLanguage}
+        busy={false}
+      />
+    ));
+
+    await user.click(await screen.findByRole('button', { name: '删除 角色 林夏' }));
+    await waitFor(async () => {
+      expect((await getCurrentProject())?.characters.map((c) => c.id)).toEqual(['c2']);
+    });
+    await user.click(screen.getByRole('button', { name: '删除 角色 阿明' }));
+    await waitFor(async () => {
+      expect((await getCurrentProject())?.characters).toHaveLength(0);
+    });
+
+    // 撤销两次（LIFO）：先恢复阿明，再恢复林夏——两个删除目标都没丢。
+    await user.click(screen.getByRole('button', { name: '撤销' }));
+    await waitFor(async () => {
+      expect((await getCurrentProject())?.characters.map((c) => c.id)).toEqual(['c2']);
+    });
+    await user.click(screen.getByRole('button', { name: '撤销' }));
+    await waitFor(async () => {
+      expect((await getCurrentProject())?.characters.map((c) => c.id)).toEqual(['c1', 'c2']);
+    });
+    confirmSpy.mockRestore();
+  });
+
+  it('does not delete when the confirm is cancelled', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderWithProjectStore(makeProject(), (project) => (
+      <CharacterPanel
+        characters={project.characters}
+        story={project.story}
+        lang={project.params.outputLanguage}
+        busy={false}
+      />
+    ));
+
+    await screen.findByDisplayValue('林夏');
+    await user.click(screen.getByRole('button', { name: '删除 角色 林夏' }));
+
+    expect((await getCurrentProject())?.characters).toHaveLength(1);
+    expect(screen.queryByText('已删除角色「林夏」。')).toBeNull();
+    confirmSpy.mockRestore();
   });
 });

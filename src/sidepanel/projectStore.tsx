@@ -7,6 +7,8 @@ import {
   saveCurrentProject,
   setShots as storageSetShots,
   updateCharacter as storageUpdateCharacter,
+  removeCharacter as storageRemoveCharacter,
+  restoreCharacter as storageRestoreCharacter,
   updateCurrentProjectBgm,
   updateGlobalStyle as storageUpdateGlobalStyle,
   updateShotFirstFrame as storageUpdateShotFirstFrame,
@@ -36,6 +38,8 @@ export interface ProjectStore {
   updateShotTransition: (shotId: string, transition: Transition | null) => Promise<Result<Project | null>>;
   updateCharacter: (id: string, patch: Partial<Character>) => Promise<Result<Project | null>>;
   addCharacter: (input: Omit<Character, 'id'>) => Promise<Result<Character>>;
+  removeCharacter: (id: string) => Promise<Result<Project | null>>;
+  restoreCharacter: (character: Character, atIndex: number) => Promise<Result<Project | null>>;
   updateGlobalStyle: (patch: Partial<GlobalStyle>) => Promise<Result<Project | null>>;
   updateBgm: (bgm: BgmPrompt) => Promise<Result<Project | null>>;
 }
@@ -152,6 +156,12 @@ export function createProjectStore(): ProjectStore {
         await publishPersistedProject();
         return result;
       });
+    },
+    removeCharacter(id) {
+      return mutateProject(() => storageRemoveCharacter(id));
+    },
+    restoreCharacter(character, atIndex) {
+      return mutateProject(() => storageRestoreCharacter(character, atIndex));
     },
     updateGlobalStyle(patch) {
       return mutateProject(() => storageUpdateGlobalStyle(patch));
