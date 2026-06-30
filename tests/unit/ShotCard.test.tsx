@@ -146,12 +146,13 @@ describe('ShotCard copy actions', () => {
     expect(screen.queryByText('复制英文')).toBeNull();
 
     await user.click(zhButton);
-    expect(copyToClipboard).toHaveBeenLastCalledWith('中文框内容');
+    // #105：单语复制带该镜头时长，跟随框语言；与导出 "时长：5s" 口径一致。
+    expect(copyToClipboard).toHaveBeenLastCalledWith('时长：3s\n中文框内容');
     await screen.findByText('已复制');
     expect(enButton.textContent).not.toContain('已复制');
 
     await user.click(enButton);
-    expect(copyToClipboard).toHaveBeenLastCalledWith('English box content');
+    expect(copyToClipboard).toHaveBeenLastCalledWith('Duration: 3s\nEnglish box content');
 
     await user.click(firstFrameZhButton);
     expect(copyToClipboard).toHaveBeenLastCalledWith('首帧中文内容');
@@ -174,9 +175,11 @@ describe('ShotCard copy actions', () => {
         '镜头 1',
         '',
         '[ZH]',
+        '时长：3s',
         '中文框内容',
         '',
         '[EN]',
+        'Duration: 3s',
         'English box content',
         '',
         '[First Frame ZH]',
@@ -200,7 +203,30 @@ describe('ShotCard copy actions', () => {
 
     await user.click(await screen.findByRole('button', { name: '复制 镜头 1 全文' }));
 
-    expect(copyToClipboard).toHaveBeenLastCalledWith(['镜头 1', '', '[ZH]', '单语中文内容'].join('\n'));
+    expect(copyToClipboard).toHaveBeenLastCalledWith(
+      ['镜头 1', '', '[ZH]', '时长：3s', '单语中文内容'].join('\n'),
+    );
+  });
+
+  it('uses the English duration label for a single-language English project (#105)', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({
+      params: { ...makeProject().params, outputLanguage: 'en' },
+      shots: [makeShot('s1', 1, { prompt: 'english only prompt' })],
+    });
+
+    renderWithProjectStore(project, (loadedProject) => (
+      <ShotCard shot={loadedProject.shots[0]} project={loadedProject} busy={false} persistApiKey onDelete={() => {}} />
+    ));
+
+    // 单语英文项目：单框复制与全文复制都用 "Duration:"（跟随 outputLanguage）。
+    await user.click(await screen.findByRole('button', { name: '复制 镜头 1 提示词' }));
+    expect(copyToClipboard).toHaveBeenLastCalledWith('Duration: 3s\nenglish only prompt');
+
+    await user.click(screen.getByRole('button', { name: '复制 镜头 1 全文' }));
+    expect(copyToClipboard).toHaveBeenLastCalledWith(
+      ['镜头 1', '', '[EN]', 'Duration: 3s', 'english only prompt'].join('\n'),
+    );
   });
 
   it('copies current edit drafts instead of stale saved prompt text', async () => {
@@ -219,10 +245,10 @@ describe('ShotCard copy actions', () => {
     await user.type(enTextarea, 'editing english draft');
 
     await user.click(screen.getByRole('button', { name: '复制 镜头 1 中文提示词' }));
-    expect(copyToClipboard).toHaveBeenLastCalledWith('编辑中的中文草稿');
+    expect(copyToClipboard).toHaveBeenLastCalledWith('时长：3s\n编辑中的中文草稿');
 
     await user.click(screen.getByRole('button', { name: '复制 镜头 1 英文提示词' }));
-    expect(copyToClipboard).toHaveBeenLastCalledWith('editing english draft');
+    expect(copyToClipboard).toHaveBeenLastCalledWith('Duration: 3s\nediting english draft');
 
     await user.click(screen.getByRole('button', { name: '复制 镜头 1 全文' }));
     const fullCopyArg = vi.mocked(copyToClipboard).mock.calls.at(-1)?.[0];

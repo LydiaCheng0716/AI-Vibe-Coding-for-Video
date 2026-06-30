@@ -35,6 +35,14 @@ function charLabel(c: Character, i: number): string {
   return c.name ?? `角色${i + 1}`;
 }
 
+/**
+ * 镜头时长标注行（Issue #105）：复制 / 导出共用同一口径，避免一处有一处无。
+ * lang='en' → "Duration: 5s"；否则（中文 / 双语中文段）→ "时长：5s"。跟随调用方语言。
+ */
+export function shotDurationLine(durationSuggestion: string, lang: 'zh' | 'en' = 'zh'): string {
+  return lang === 'en' ? `Duration: ${durationSuggestion}` : `时长：${durationSuggestion}`;
+}
+
 /** 动态围栏：若内容含连续反引号，用更长的围栏避免代码块提前闭合（kimi LOW）。 */
 function fence(content: string): { open: string; close: string } {
   const longest = (content.match(/`+/g) ?? []).reduce((m, s) => Math.max(m, s.length), 0);
@@ -88,7 +96,7 @@ function shotMd(s: Shot, lang: ExportPromptLang): string {
     `### 镜头 ${s.index}：${s.summary}`,
     `- 景别：${s.shotSize}`,
     `- 运镜：${s.cameraMovement}`,
-    `- 时长：${s.durationSuggestion}`,
+    `- ${shotDurationLine(s.durationSuggestion, 'zh')}`,
     '',
     ...promptBlocks,
     ...ffBlocks,
@@ -135,7 +143,7 @@ function shotText(s: Shot, lang: ExportPromptLang): string {
   );
   return [
     `镜头 ${s.index}：${s.summary}`,
-    `景别：${s.shotSize}　运镜：${s.cameraMovement}　时长：${s.durationSuggestion}`,
+    `景别：${s.shotSize}　运镜：${s.cameraMovement}　${shotDurationLine(s.durationSuggestion, 'zh')}`,
     ...promptLines,
     ...ffLines,
   ].join('\n');

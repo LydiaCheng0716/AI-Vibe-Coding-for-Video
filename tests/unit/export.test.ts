@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { exportProject } from '../../src/core/export';
+import { exportProject, shotDurationLine } from '../../src/core/export';
 import { defaultParams } from '../../src/core/defaults';
 import type { Project, Shot, Character, BgmPrompt } from '../../src/core/models';
 
@@ -60,12 +60,23 @@ describe('exportProject: JSON', () => {
   });
 });
 
+describe('shotDurationLine（Issue #105：复制/导出共用时长口径）', () => {
+  it('跟随语言：zh → 时长：；en → Duration:', () => {
+    expect(shotDurationLine('5s', 'zh')).toBe('时长：5s');
+    expect(shotDurationLine('5s', 'en')).toBe('Duration: 5s');
+  });
+  it('默认中文口径', () => {
+    expect(shotDurationLine('8s')).toBe('时长：8s');
+  });
+});
+
 describe('exportProject: Markdown', () => {
   it('含每镜头概要/景别/运镜/时长/提示词 + 角色', () => {
     const r = exportProject(mkProject(), 'markdown');
     if (r.ok) {
       expect(r.data).toContain('镜头 1：概要1');
       expect(r.data).toContain('景别：中景');
+      expect(r.data).toContain('时长：3s'); // #105：复制/导出共用同一时长口径
       expect(r.data).toContain('提示词1');
       expect(r.data).toContain('红衣男孩');
     }
