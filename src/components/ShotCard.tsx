@@ -4,6 +4,7 @@ import { rewriteShot, generateFirstFrame, translateText } from '../services/gene
 import type { RewriteMode } from '../prompts/rewrite';
 import { copyToClipboard } from '../services/clipboard';
 import { shotSizeOptions, cameraMovementOptions, DURATION_OPTIONS, withCurrent } from '../core/shotParams';
+import { shotDurationLine } from '../core/export';
 import { useProjectStore } from '../sidepanel/projectStore';
 import { OneTimeKeyInput, useOneTimeKey } from './OneTimeKeyInput';
 import { getSettings, updateSettings } from '../services/storage';
@@ -148,10 +149,13 @@ function buildShotCopyText({
   promptEn?: string;
   outputLanguage: Project['params']['outputLanguage'];
 }) {
+  const dur = shot.durationSuggestion;
   const sections: string[][] = [[title]];
-  const primaryLabel = shot.promptEn !== undefined || outputLanguage !== 'en' ? '[ZH]' : '[EN]';
-  sections.push([primaryLabel, prompt]);
-  if (shot.promptEn !== undefined) sections.push(['[EN]', promptEn ?? '']);
+  // 主语言段（单语项目按 outputLanguage；双语项目主段恒为中文）：时长标注跟随该段语言（#105）。
+  const primaryIsEn = !(shot.promptEn !== undefined || outputLanguage !== 'en');
+  const primaryLabel = primaryIsEn ? '[EN]' : '[ZH]';
+  sections.push([primaryLabel, shotDurationLine(dur, primaryIsEn ? 'en' : 'zh'), prompt]);
+  if (shot.promptEn !== undefined) sections.push(['[EN]', shotDurationLine(dur, 'en'), promptEn ?? '']);
   if (shot.firstFramePrompt) sections.push(['[First Frame ZH]', shot.firstFramePrompt]);
   if (shot.firstFramePromptEn) sections.push(['[First Frame EN]', shot.firstFramePromptEn]);
   return sections.map((section) => section.join('\n')).join('\n\n');
@@ -370,6 +374,11 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
   const copiedTitle = t('shotCard.copiedInline');
   const clearCopyNotice = () => setNotice(null);
   const showCopyError = (message: string) => setNotice(message);
+  // 单语复制：在提示词前带上该镜头时长，跟随该框语言，与导出口径一致（#105）。
+  // 主框语言：双语项目主框恒中文；单语项目按 outputLanguage。
+  const primaryCopyLang: 'zh' | 'en' = shot.promptEn !== undefined ? 'zh' : lang === 'en' ? 'en' : 'zh';
+  const withDuration = (copyLang: 'zh' | 'en', text: string) =>
+    `${shotDurationLine(shot.durationSuggestion, copyLang)}\n${text}`;
   const fullCopyText = buildShotCopyText({
     shot,
     title: t('shotCard.title', { index: shot.index }),
@@ -492,7 +501,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             <span className="text-[11px] font-medium text-gray-500">{t('common.zh')}</span>
           )}
           <PromptCopyBox
-            copyText={draft}
+            copyText={withDuration(primaryCopyLang, draft)}
             label={
               shot.promptEn !== undefined
                 ? t('shotCard.copyZhAria', { index: shot.index })
@@ -516,7 +525,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
             <>
               <span className="text-[11px] font-medium text-gray-500">{t('common.en')}</span>
               <PromptCopyBox
-                copyText={draftEn}
+                copyText={withDuration('en', draftEn)}
                 label={t('shotCard.copyEnAria', { index: shot.index })}
                 title={copyTitle}
                 copiedTitle={copiedTitle}
@@ -557,7 +566,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
           <div>
             <span className="text-[11px] font-medium text-gray-500">{t('common.zh')}</span>
             <PromptCopyBox
-              copyText={shot.prompt}
+              copyText={withDuration('zh', shot.prompt)}
               label={t('shotCard.copyZhAria', { index: shot.index })}
               title={copyTitle}
               copiedTitle={copiedTitle}
@@ -572,7 +581,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
           <div>
             <span className="text-[11px] font-medium text-gray-500">{t('common.en')}</span>
             <PromptCopyBox
-              copyText={shot.promptEn}
+              copyText={withDuration('en', shot.promptEn)}
               label={t('shotCard.copyEnAria', { index: shot.index })}
               title={copyTitle}
               copiedTitle={copiedTitle}
@@ -587,7 +596,7 @@ export default function ShotCard({ shot, project, busy, persistApiKey, onDelete 
         </div>
       ) : (
         <PromptCopyBox
-          copyText={shot.prompt}
+          copyText={withDuration(primaryCopyLang, shot.prompt)}
           label={t('shotCard.copyAria', { index: shot.index })}
           title={copyTitle}
           copiedTitle={copiedTitle}
