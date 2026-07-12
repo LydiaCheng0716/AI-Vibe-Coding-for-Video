@@ -139,6 +139,7 @@ const zh = {
   'shotCard.cameraMovement': '运镜',
   'shotCard.duration': '时长',
   'shotCard.autoSync': '编辑后自动翻译同步另一语言（会记住此偏好）',
+  'shotCard.autoSyncCostHint': '开启后每次失焦编辑会调用一次 LLM 翻译，消耗你自带 Key 的额度。',
   'shotCard.translating': '翻译中…',
   'shotCard.autoTranslateKeyAria': '一次性 API Key，用于镜头 {index} 自动翻译',
   'shotCard.autoTranslateKeyPlaceholder': '一次性 API Key（已关闭保存，用于自动翻译，不落盘）',

@@ -23,7 +23,8 @@ export function defaultSettings(): Settings {
     provider: defaultProvider(),
     uiLanguage: 'zh',
     persistApiKey: true,
-    autoTranslateSync: false,
+    // 默认开启双语自动翻译同步（Issue #104）：提升可发现性；开启会按编辑消耗 LLM 额度，UI 旁有常驻提示。
+    autoTranslateSync: true,
     exportFormat: 'markdown',
     exportPromptLang: 'both',
     panelCollapsed: {},

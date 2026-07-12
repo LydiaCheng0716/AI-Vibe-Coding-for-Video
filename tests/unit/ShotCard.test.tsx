@@ -61,7 +61,9 @@ describe('ShotCard bilingual auto translation', () => {
     ));
 
     await user.click(await screen.findByRole('button', { name: '编辑 镜头 1' }));
-    await user.click(screen.getByRole('checkbox', { name: /编辑后自动翻译同步另一语言/ }));
+    // #104：自动同步默认开启，等待默认勾选生效后直接编辑（不再手动点开）。
+    const checkbox = screen.getByRole('checkbox', { name: /编辑后自动翻译同步另一语言/ }) as HTMLInputElement;
+    await waitFor(() => expect(checkbox.checked).toBe(true));
     const [zhTextarea, enTextarea] = screen.getAllByRole('textbox') as HTMLTextAreaElement[];
 
     await user.clear(zhTextarea);
@@ -87,7 +89,8 @@ describe('ShotCard bilingual auto translation', () => {
     ));
 
     await user.click(await screen.findByRole('button', { name: '编辑 镜头 1' }));
-    await user.click(screen.getByRole('checkbox', { name: /编辑后自动翻译同步另一语言/ }));
+    const checkbox = screen.getByRole('checkbox', { name: /编辑后自动翻译同步另一语言/ }) as HTMLInputElement;
+    await waitFor(() => expect(checkbox.checked).toBe(true));
     const [zhTextarea, enTextarea] = screen.getAllByRole('textbox') as HTMLTextAreaElement[];
 
     await user.clear(zhTextarea);
@@ -122,12 +125,64 @@ describe('ShotCard bilingual auto translation', () => {
       expect((await getSettings()).autoTranslateSync).toBe(false);
     });
   });
+
+  it('does not re-translate when a box is blurred without edits (no round-trip overwrite)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(translateText).mockResolvedValue({ ok: true, data: 'translated english result' });
+
+    renderWithProjectStore(bilingualProject(), (project) => (
+      <ShotCard shot={project.shots[0]} project={project} busy={false} persistApiKey onDelete={() => {}} />
+    ));
+
+    await user.click(await screen.findByRole('button', { name: '编辑 镜头 1' }));
+    const checkbox = screen.getByRole('checkbox', { name: /编辑后自动翻译同步另一语言/ }) as HTMLInputElement;
+    await waitFor(() => expect(checkbox.checked).toBe(true));
+    const [zhTextarea, enTextarea] = screen.getAllByRole('textbox') as HTMLTextAreaElement[];
+
+    await user.clear(zhTextarea);
+    await user.type(zhTextarea, '新的中文提示');
+    fireEvent.blur(zhTextarea);
+    await waitFor(() => expect(enTextarea.value).toBe('translated english result'));
+    expect(translateText).toHaveBeenCalledTimes(1);
+
+    // 仅聚焦英文框再失焦（未改动）→ 不应再次翻译、不把机翻英文回译覆盖原中文。
+    fireEvent.blur(enTextarea);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(translateText).toHaveBeenCalledTimes(1);
+    expect(zhTextarea.value).toBe('新的中文提示');
+  });
+
+  it('translates a real manual English edit and keeps the edited English (no reverse overwrite)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(translateText).mockResolvedValue({ ok: true, data: '机翻中文回填' });
+
+    renderWithProjectStore(bilingualProject(), (project) => (
+      <ShotCard shot={project.shots[0]} project={project} busy={false} persistApiKey onDelete={() => {}} />
+    ));
+
+    await user.click(await screen.findByRole('button', { name: '编辑 镜头 1' }));
+    const checkbox = screen.getByRole('checkbox', { name: /编辑后自动翻译同步另一语言/ }) as HTMLInputElement;
+    await waitFor(() => expect(checkbox.checked).toBe(true));
+    const [zhTextarea, enTextarea] = screen.getAllByRole('textbox') as HTMLTextAreaElement[];
+
+    await user.clear(enTextarea);
+    await user.type(enTextarea, 'fixed english by hand');
+    fireEvent.blur(enTextarea);
+
+    await waitFor(() => expect(zhTextarea.value).toBe('机翻中文回填'));
+    expect(enTextarea.value).toBe('fixed english by hand');
+    expect(translateText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'fixed english by hand', targetLang: 'zh' }),
+    );
+  });
 });
 
 describe('ShotCard copy actions', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     vi.mocked(copyToClipboard).mockResolvedValue(ok(undefined));
+    // #104：自动同步默认开启；复制相关用例与翻译无关，显式关闭以免焦点切换触发翻译。
+    await saveSettings({ ...defaultSettings(), autoTranslateSync: false });
   });
 
   it('copies each visible prompt box from its own icon button with local feedback', async () => {
